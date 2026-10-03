@@ -1,10 +1,18 @@
 ---
-
+sidebar_position: 1
+title: "M1 — Bootstrap de Docusaurus"
+description: "Creación desde cero del proyecto Docusaurus para el Lab 04, validación local y generación del build de producción."
+tags:
+  - docusaurus
+  - nodejs
+  - npm
+  - devops
+  - lab04
 ---
 
 
 
-# M1 — Bootstrap de Docusaurus
+# M1 - Bootstrap de Docusaurus
 
 ## Objetivo
 

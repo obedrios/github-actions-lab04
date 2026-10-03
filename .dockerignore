@@ -1,0 +1,9 @@
+node_modules
+build
+.git
+.gitignore
+.github
+npm-debug.log*
+Dockerfile*
+README.md
+docs/lab04
