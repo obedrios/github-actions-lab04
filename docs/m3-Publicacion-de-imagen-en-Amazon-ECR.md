@@ -86,7 +86,7 @@ Estos componentes aparecerán en milestones posteriores.
 
 Al finalizar M2 disponemos localmente de:
 
-```
+```bash
 lab04-docusaurus:local
 ```
 
@@ -163,31 +163,43 @@ M2 debe estar completado.
 
 Verificar la imagen local:
 
-```
+```bash
 docker image ls lab04-docusaurus:local
 ```
 
 Verificar Docker:
 
-```
+```bash
 docker --version
 ```
 
 Verificar AWS CLI:
 
-```
+```bash
+# Corroborar la version instalada de AWS-CLI
 aws --version
+
+# Iniciar login via Web
+aws login --profile aws-lab
 ```
+
+
+
+> [!note]
+>
+> Se considera que existe un usuario `aws-lab` que pertenece a un grupo, pero particularmente tiene el permiso `SignInLocalDevelopmentAccess` para poder usar `aws login`
+
+
 
 Comprobar que existe una sesión AWS válida:
 
-```
-aws sts get-caller-identity
+```bash
+aws sts get-caller-identity --profile aws-lab
 ```
 
 Esperamos una respuesta similar a:
 
-```
+```json
 {
     "UserId": "...",
     "Account": "123456789012",
@@ -205,47 +217,47 @@ Definir primero la región AWS donde realizaremos el laboratorio.
 
 Por ejemplo:
 
-```
-export AWS_REGION="us-west-2"
+```bash
+export AWS_REGION="us-east-1"
 ```
 
 Si se utiliza otra región, modificarla antes de continuar.
 
 Definir el nombre del repositorio:
 
-```
+```bash
 export ECR_REPOSITORY="lab04-docusaurus"
 ```
 
 Obtener automáticamente el Account ID:
 
-```
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile aws-lab \
   --query Account \
   --output text)
 ```
 
 Construir la URI del registry:
 
-```
+```bash
 export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 ```
 
 Construir la URI completa del repositorio:
 
-```
+```bash
 export ECR_REPOSITORY_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}"
 ```
 
 Definir el tag de esta versión:
 
-```
+```bash
 export IMAGE_TAG="m3-v1"
 ```
 
 Verificar:
 
-```
+```bash
 echo "AWS_REGION=${AWS_REGION}"
 echo "AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}"
 echo "ECR_REGISTRY=${ECR_REGISTRY}"
@@ -308,71 +320,107 @@ ECS Deployment
 
 Crear:
 
-```
-aws ecr create-repository \
+```bash
+aws ecr create-repository --profile aws-lab\
   --repository-name "${ECR_REPOSITORY}" \
   --image-tag-mutability IMMUTABLE \
   --image-scanning-configuration scanOnPush=true \
   --region "${AWS_REGION}"
 ```
 
-Esperamos una respuesta que incluya información similar a:
+Esperamos una respuesta que incluya información como `repositoryName`, `
+repositoryArn`, `repositoryUri`, `imageTagMutability` contenido en un `JSON`:
 
-```
-repositoryName
-repositoryArn
-repositoryUri
-imageTagMutability
-```
-
-La propiedad:
-
-```
-IMMUTABLE
-```
-
-significa que, una vez utilizado un tag, no podremos reemplazar silenciosamente la imagen asociada a ese tag.
-
-Por ejemplo:
-
-```
-m3-v1
-   │
-   ▼
-Image A
+```JSON
+{
+    "repository": {
+        "repositoryArn": "arn:aws:ecr:us-east-1:565866186032:repository/lab04-docusaurus",
+        "registryId": "565866186032",
+        "repositoryName": "lab04-docusaurus",
+        "repositoryUri": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus",
+        "createdAt": "2026-10-10T15:43:30.309000-07:00",
+        "imageTagMutability": "IMMUTABLE",
+        "imageScanningConfiguration": {
+            "scanOnPush": true
+        },
+        "encryptionConfiguration": {
+            "encryptionType": "AES256"
+        }
+    }
+}
 ```
 
-no podrá convertirse posteriormente en:
 
-```
-m3-v1
-   │
-   ▼
-Image B
-```
 
-Para publicar otra versión utilizaríamos:
+> [!note]
+>
+> La propiedad: `IMMUTABLE`, significa que, una vez utilizado un tag, no podremos reemplazar silenciosamente la imagen asociada a ese tag.
+>
+> Por ejemplo:
+>
+> ```
+> m3-v1
+>    │
+>    ▼
+> Image A
+> ```
+>
+> no podrá convertirse posteriormente en:
+>
+> ```
+> m3-v1
+>    │
+>    ▼
+> Image B
+> ```
+>
+> Para publicar otra versión utilizaríamos:
+>
+> ```
+> m3-v2
+> ```
+>
+> o, posteriormente, el SHA correspondiente al commit.
 
-```
-m3-v2
-```
 
-o, posteriormente, el SHA correspondiente al commit.
 
 ## 7. Verificar el repositorio
 
 Ejecutar:
 
-```
-aws ecr describe-repositories \
+```bash
+aws ecr describe-repositories --profile aws-lab \
   --repository-names "${ECR_REPOSITORY}" \
   --region "${AWS_REGION}"
 ```
 
-Podemos obtener solamente la URI:
+y se obtiene el mismo `JSON` cuando se crea el repositorio,
 
-```
-aws ecr describe-repositories \
+````json
+{
+    "repositories": [
+        {
+            "repositoryArn": "arn:aws:ecr:us-east-1:565866186032:repository/lab04-docusaurus",
+            "registryId": "565866186032",
+            "repositoryName": "lab04-docusaurus",
+            "repositoryUri": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus",
+            "createdAt": "2026-10-10T15:43:30.309000-07:00",
+            "imageTagMutability": "IMMUTABLE",
+            "imageScanningConfiguration": {
+                "scanOnPush": true
+            },
+            "encryptionConfiguration": {
+                "encryptionType": "AES256"
+            }
+        }
+    ]
+}
+````
+
+También, podemos obtener solamente la `URI`:
+
+```bash
+aws ecr describe-repositories --profile aws-lab \
   --repository-names "${ECR_REPOSITORY}" \
   --region "${AWS_REGION}" \
   --query 'repositories[0].repositoryUri' \
@@ -381,8 +429,8 @@ aws ecr describe-repositories \
 
 El resultado será similar a:
 
-```
-123456789012.dkr.ecr.us-west-2.amazonaws.com/lab04-docusaurus
+```bash
+565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus
 ```
 
 ## 8. Checkpoint 1 — Repositorio ECR
@@ -413,8 +461,8 @@ Docker necesita autenticarse contra nuestro registry privado.
 
 Ejecutar:
 
-```
-aws ecr get-login-password \
+```bash
+aws ecr get-login-password --profile aws-lab \
   --region "${AWS_REGION}" \
   | docker login \
       --username AWS \
@@ -423,7 +471,9 @@ aws ecr get-login-password \
 
 Resultado esperado:
 
-```
+```bash
+WARNING! Your credentials are stored unencrypted in '~/.docker/config.json'.
+
 Login Succeeded
 ```
 
@@ -463,7 +513,7 @@ Checkpoint 2: PASS
 
 Ejecutar:
 
-```
+```bash
 docker image ls lab04-docusaurus:local
 ```
 
@@ -479,7 +529,7 @@ ECR necesita que la imagen tenga un tag con la URI completa del repositorio.
 
 Ejecutar:
 
-```
+```bash
 docker tag \
   lab04-docusaurus:local \
   "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
@@ -518,7 +568,7 @@ Hemos creado otra referencia hacia ella.
 
 Ejecutar:
 
-```
+```bash
 docker push "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
 ```
 
@@ -526,7 +576,7 @@ Docker comenzará a enviar las capas de la imagen.
 
 La salida será similar conceptualmente a:
 
-```
+```bash
 layer A: pushed
 layer B: pushed
 layer C: pushed
@@ -536,8 +586,8 @@ m3-v1: digest: sha256:...
 
 El dato más importante será:
 
-```
-sha256:...
+```bash
+m3-v1: digest: sha256:0b6ee5f9b610c8573d037f45bfa2ff6a5a28acf9bf7f84dd0ae610601db6413b size: 856
 ```
 
 Este es el **digest** de la imagen.
@@ -589,16 +639,16 @@ Checkpoint 3: PASS
 
 Ejecutar:
 
-```
-aws ecr describe-images \
+```bash
+aws ecr describe-images --profile aws-lab\
   --repository-name "${ECR_REPOSITORY}" \
   --region "${AWS_REGION}"
 ```
 
 Podemos obtener únicamente la información relevante:
 
-```
-aws ecr describe-images \
+```bash
+aws ecr describe-images --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-ids imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}" \
@@ -608,19 +658,23 @@ aws ecr describe-images \
 
 Debemos encontrar:
 
-```
-m3-v1
-sha256:...
-push timestamp
-image size
+```markdown
+-----------------------------------------------------------------------------
+|                              DescribeImages                               |
++---------------------------------------------------------------------------+
+|  m3-v1                                                                    |
+|  sha256:0b6ee5f9b610c8573d037f45bfa2ff6a5a28acf9bf7f84dd0ae610601db6413b  |
+|  2026-10-10T15:57:48.904000-07:00                                         |
+|  26643737                                                                 |
++---------------------------------------------------------------------------+
 ```
 
 ## 17. Capturar el digest
 
 Podemos almacenar el digest:
 
-```
-export IMAGE_DIGEST=$(aws ecr describe-images \
+```bash
+export IMAGE_DIGEST=$(aws ecr describe-images --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-ids imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}" \
@@ -630,27 +684,22 @@ export IMAGE_DIGEST=$(aws ecr describe-images \
 
 Verificar:
 
-```
+```bash
 echo "${IMAGE_DIGEST}"
 ```
 
 Resultado esperado:
 
-```
-sha256:...
+```bash
+sha256:0b6ee5f9b610c8573d037f45bfa2ff6a5a28acf9bf7f84dd0ae610601db6413b
 ```
 
 Ahora tenemos tres identificadores importantes:
 
-```
-Repository
-lab04-docusaurus
-
-Tag
-m3-v1
-
-Digest
-sha256:...
+```bash
++ Repository: lab04-docusaurus
++ Tag: m3-v1
++ Digest: sha256:...
 ```
 
 ## 18. Identidad de la imagen
@@ -680,11 +729,13 @@ Immutable content identity
 sha256:...
 ```
 
+
+
 ## 19. Verificar el vulnerability scan
 
 Como el repositorio fue configurado con:
 
-```
+```bash
 scanOnPush=true
 ```
 
@@ -692,8 +743,17 @@ Amazon ECR iniciará el análisis correspondiente después del push.
 
 Podemos consultar el estado:
 
-```
+```bash
+# Iniciar manualmente el scan si no existe uno
+aws ecr start-image-scan \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-id imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+
+# Consultar resultados
 aws ecr describe-image-scan-findings \
+  --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-id imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}"
@@ -711,7 +771,7 @@ imageDigest
 
 Para una vista compacta:
 
-```
+```bash
 aws ecr describe-image-scan-findings \
   --repository-name "${ECR_REPOSITORY}" \
   --image-id imageTag="${IMAGE_TAG}" \
@@ -723,6 +783,8 @@ aws ecr describe-image-scan-findings \
 La existencia de findings no significa automáticamente que la imagen no pueda ejecutarse.
 
 La información debe utilizarse para conocer y evaluar vulnerabilidades presentes en las capas de la imagen.
+
+
 
 ## 20. Checkpoint 4 — Verificación ECR
 
