@@ -1,19 +1,18 @@
 ---
 sidebar_position: 3
 title: "M3 — Publicación de la imagen en Amazon ECR"
-description: "Publicación manual de la imagen Docker de Docusaurus en Amazon ECR, utilizando autenticación AWS, tags inmutables, verificación mediante digest, análisis de vulnerabilidades y prueba de descarga."
+description: "Publicación manual de una imagen OCI single-platform de Docusaurus en Amazon ECR, incluyendo autenticación AWS, tags inmutables, digest, análisis de vulnerabilidades y estudio de OCI Image Manifest vs OCI Image Index."
 tags:
-
-- aws
-- amazon-ecr
-- docker
-- containers
-- docusaurus
-- devops
-- lab04
+  - aws
+  - amazon-ecr
+  - docker
+  - buildkit
+  - oci
+  - containers
+  - docusaurus
+  - devops
+  - lab04
 ---
-
-
 
 # M3 — Publicación de la imagen en Amazon ECR
 
@@ -21,35 +20,50 @@ tags:
 
 Publicar en **Amazon Elastic Container Registry (Amazon ECR)** la imagen Docker de Docusaurus creada y validada durante **M2**.
 
-El objetivo es comprobar manualmente el flujo completo:
+Durante este milestone también estudiaremos una diferencia importante del estándar OCI:
 
+- **OCI Image Manifest**
+- **OCI Image Index**
+
+El flujo principal publicará una imagen **single-platform** como OCI Image Manifest bajo un único tag:
+
+```text
+m3-v1
 ```
-Local Docker Image
-        │
-        ▼
-AWS Authentication
-        │
-        ▼
-Amazon ECR Repository
-        │
-        ▼
-Docker Tag
-        │
-        ▼
-docker push
-        │
-        ▼
-Versioned Image
-        │
-        ▼
-Image Digest
+
+El OCI Image Index se generará únicamente como un artefacto local de aprendizaje para comprender por qué una imagen construida con provenance, SBOM o múltiples plataformas puede terminar representada mediante un índice.
+
+El objetivo principal es demostrar:
+
+```text
+Docusaurus
+    │
+    ▼
+Docker / BuildKit
+    │
+    ▼
+OCI Image Manifest
+    │
+    ▼
+Amazon ECR
+    │
+    ▼
+m3-v1
+    │
+    ▼
+Digest
+    │
+    ▼
+Vulnerability Scan
 ```
 
 En este milestone todavía **no utilizaremos Amazon ECS ni AWS Fargate**.
 
 El criterio principal de salida será:
 
-> **PASS:** la imagen `lab04-docusaurus` puede publicarse en un repositorio privado de Amazon ECR, verificarse mediante su tag y digest, descargarse nuevamente y ejecutarse correctamente de forma local.
+> **PASS:** la imagen `lab04-docusaurus:m3-v1` se publica en Amazon ECR como un image manifest single-platform, dispone de digest verificable, puede ser analizada por ECR Basic Scanning, descargada nuevamente y ejecutada correctamente de forma local.
+
+---
 
 ## Alcance
 
@@ -59,55 +73,55 @@ M3 introduce:
 - Identidad AWS.
 - Amazon ECR.
 - Repositorios privados.
-- Autenticación Docker contra ECR.
-- Docker tags.
+- Docker authentication contra ECR.
+- Docker Buildx / BuildKit.
+- OCI Image Manifest.
+- OCI Image Index.
+- Provenance attestations.
+- SBOM attestations.
 - Tags inmutables.
-- Push de imágenes.
 - Image digest.
 - Vulnerability scanning.
 - Pull desde ECR.
-- Validación de la imagen recuperada.
+- Validación del artefacto recuperado.
 
-El flujo de deployment todavía no incluirá:
+Este milestone todavía no incluye:
 
-```
+```text
 Amazon ECS
 AWS Fargate
 Application Load Balancer
 CloudWatch Logs
 GitHub Actions
-OIDC
-CI/CD
+OIDC CI/CD
 ```
 
-Estos componentes aparecerán en milestones posteriores.
+---
 
 ## 1. Estado inicial
 
 Al finalizar M2 disponemos localmente de:
 
-```bash
+```text
 lab04-docusaurus:local
 ```
 
-Podemos verificarlo con:
+Verificar:
 
-```
+```bash
 docker image ls lab04-docusaurus
 ```
 
 Ejemplo:
 
-```
+```text
 REPOSITORY          TAG       IMAGE ID       SIZE
 lab04-docusaurus    local     abc123...      ...
 ```
 
-La arquitectura actual es:
+Nuestra arquitectura hasta ahora es:
 
-```
-Local Machine
-
+```text
 Docusaurus Source
        │
        ▼
@@ -115,15 +129,28 @@ Docker Build
        │
        ▼
 lab04-docusaurus:local
+       │
+       ▼
+Local Container
 ```
 
-La imagen todavía existe únicamente en nuestra máquina.
+M3 agregará un registry remoto:
+
+```text
+Local Image
+    │
+    ▼
+Amazon ECR
+    │
+    ▼
+Versioned Artifact
+```
+
+---
 
 ## 2. Arquitectura de M3
 
-Al completar M3 tendremos:
-
-```
+```text
                     AWS
                      │
                      ▼
@@ -133,39 +160,28 @@ Al completar M3 tendremos:
             │ Private Registry│
             └────────┬────────┘
                      │
-                     │ repository
                      ▼
             lab04-docusaurus
                      │
                      ▼
-                  m3-v1
+                   m3-v1
+                     │
+                     ▼
+              OCI Manifest
                      │
                      ▼
                   digest
-                     ▲
-                     │
-                  docker push
-                     │
-                     │
-              Local Machine
-                     │
-                     ▼
-       lab04-docusaurus:local
 ```
 
-ECR será únicamente el **registry**.
+ECR será únicamente el **container registry**.
 
 La aplicación todavía no estará ejecutándose en AWS.
+
+---
 
 ## 3. Prerrequisitos
 
 M2 debe estar completado.
-
-Verificar la imagen local:
-
-```bash
-docker image ls lab04-docusaurus:local
-```
 
 Verificar Docker:
 
@@ -173,25 +189,25 @@ Verificar Docker:
 docker --version
 ```
 
+Verificar Buildx:
+
+```bash
+docker buildx version
+```
+
 Verificar AWS CLI:
 
 ```bash
-# Corroborar la version instalada de AWS-CLI
 aws --version
+```
 
-# Iniciar login via Web
+Iniciar sesión con el perfil utilizado para el laboratorio:
+
+```bash
 aws login --profile aws-lab
 ```
 
-
-
-> [!note]
->
-> Se considera que existe un usuario `aws-lab` que pertenece a un grupo, pero particularmente tiene el permiso `SignInLocalDevelopmentAccess` para poder usar `aws login`
-
-
-
-Comprobar que existe una sesión AWS válida:
+Comprobar la identidad:
 
 ```bash
 aws sts get-caller-identity --profile aws-lab
@@ -201,38 +217,35 @@ Esperamos una respuesta similar a:
 
 ```json
 {
-    "UserId": "...",
-    "Account": "123456789012",
-    "Arn": "..."
+  "UserId": "...",
+  "Account": "123456789012",
+  "Arn": "..."
 }
 ```
 
-Esta operación nos permite verificar qué identidad AWS estamos utilizando antes de crear recursos.
+Esta operación confirma qué identidad AWS estamos utilizando.
+
+---
 
 ## 4. Definir variables del laboratorio
 
-Para simplificar los comandos utilizaremos variables de shell.
-
-Definir primero la región AWS donde realizaremos el laboratorio.
-
-Por ejemplo:
+Definir la región:
 
 ```bash
 export AWS_REGION="us-east-1"
 ```
 
-Si se utiliza otra región, modificarla antes de continuar.
-
-Definir el nombre del repositorio:
+Definir el repositorio:
 
 ```bash
 export ECR_REPOSITORY="lab04-docusaurus"
 ```
 
-Obtener automáticamente el Account ID:
+Obtener el Account ID:
 
 ```bash
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile aws-lab \
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+  --profile aws-lab \
   --query Account \
   --output text)
 ```
@@ -243,13 +256,13 @@ Construir la URI del registry:
 export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 ```
 
-Construir la URI completa del repositorio:
+Construir la URI del repositorio:
 
 ```bash
 export ECR_REPOSITORY_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}"
 ```
 
-Definir el tag de esta versión:
+Definir el único tag utilizado durante M3:
 
 ```bash
 export IMAGE_TAG="m3-v1"
@@ -265,80 +278,293 @@ echo "ECR_REPOSITORY_URI=${ECR_REPOSITORY_URI}"
 echo "IMAGE_TAG=${IMAGE_TAG}"
 ```
 
+---
+
 ## 5. Convención de versionado
 
-No utilizaremos únicamente:
+Durante todo M3 utilizaremos exclusivamente:
 
-```
-latest
-```
-
-Para este milestone utilizaremos:
-
-```
+```text
 m3-v1
 ```
 
-De esta manera podemos identificar exactamente qué imagen fue publicada.
+No utilizaremos:
+
+```text
+latest
+```
+
+ni tags alternativos para corregir errores durante el laboratorio.
 
 Conceptualmente:
 
-```
+```text
 lab04-docusaurus
         │
         └── m3-v1
 ```
 
-Posteriormente, cuando GitHub Actions automatice el proceso, podremos utilizar identificadores como:
+Posteriormente, durante CI/CD, podremos utilizar identificadores derivados del Git commit SHA.
+
+En M3 queremos mantener el experimento deliberadamente simple.
+
+---
+
+## 6. OCI Image Manifest vs OCI Image Index
+
+Antes de publicar la imagen debemos distinguir dos estructuras OCI.
+
+### OCI Image Manifest
+
+Un **OCI Image Manifest** describe una imagen concreta:
 
 ```
-Git commit SHA
+OCI Image Manifest
+      │
+      ├── config
+      │
+      ├── layer
+      ├── layer
+      └── layer
 ```
 
-por ejemplo:
+Su media type es:
 
 ```
-a7f1c42
+application/vnd.oci.image.manifest.v1+json
 ```
 
-Esto permitirá relacionar:
+Este será el formato objetivo para:
 
 ```
-Git Commit
-    │
-    ▼
-Docker Image
-    │
-    ▼
-ECR Digest
-    │
-    ▼
-ECS Deployment
+m3-v1
 ```
 
-## 6. Crear el repositorio privado de Amazon ECR
+### OCI Image Index
 
-Crear:
+Un **OCI Image Index** es un nivel superior que puede referenciar varios manifests.
+
+Ejemplo:
+
+```
+OCI Image Index
+       │
+       ├── linux/amd64 manifest
+       │
+       ├── linux/arm64 manifest
+       │
+       └── attestation manifest
+```
+
+Su media type es:
+
+```
+application/vnd.oci.image.index.v1+json
+```
+
+Los índices son útiles para:
+
+- imágenes multi-platform;
+- provenance;
+- SBOM;
+- otros artefactos y attestations.
+
+Por tanto:
+
+```
+Manifest
+   ≠
+Index
+```
+
+Un manifest describe normalmente una imagen concreta.
+
+Un index puede describir o agrupar múltiples manifests.
+
+---
+
+## 7. Hallazgo experimental
+
+Durante la primera ejecución de M3 se publicó una imagen cuyo media type fue:
+
+```text
+application/vnd.oci.image.index.v1+json
+```
+
+Al consultar el scan:
 
 ```bash
-aws ecr create-repository --profile aws-lab\
+aws ecr describe-image-scan-findings \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-id imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+```
+
+se obtuvo inicialmente:
+
+```text
+aws ecr describe-image-scan-findings \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-id imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+```
+
+Al intentar iniciar manualmente el scan:
+
+```bash
+aws ecr start-image-scan \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-id imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+```
+
+se obtuvo:
+
+```text
+UnsupportedImageTypeException
+```
+
+con el mensaje:
+
+```text
+An artifact with media type
+'application/vnd.oci.image.index.v1+json'
+cannot be scanned.
+```
+
+Esto nos permitió identificar una diferencia importante entre:
+
+```text
+OCI Image Index
+```
+
+y:
+
+```text
+OCI Image Manifest
+```
+
+---
+
+## 8. Generar un OCI Image Index como experimento local
+
+Antes de construir la imagen que publicaremos, podemos producir deliberadamente un artefacto OCI con attestations.
+
+Este artefacto **no será publicado en ECR**.
+
+Ejecutar:
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=mode=max \
+  --sbom=true \
+  --output type=oci,dest=lab04-oci-index.tar \
+  .
+```
+
+Esto genera:
+
+```text
+lab04-oci-index.tar
+```
+
+Podemos inspeccionar el OCI layout:
+
+```bash
+mkdir -p /tmp/lab04-oci-index
+tar -xf lab04-oci-index.tar -C /tmp/lab04-oci-index
+```
+
+Revisar:
+
+```bash
+cat /tmp/lab04-oci-index/index.json
+```
+
+Si `jq` está disponible:
+
+```bash
+jq . /tmp/lab04-oci-index/index.json
+```
+
+Conceptualmente encontraremos una estructura tipo:
+
+```text
+OCI Layout
+    │
+    ▼
+index.json
+    │
+    ├── image manifest
+    │
+    └── attestation information
+```
+
+Este ejercicio sirve únicamente para entender cómo BuildKit puede producir estructuras OCI más complejas.
+
+No utilizaremos este artefacto como la imagen final de M3.
+
+---
+
+## 9. Arquitectura que queremos publicar
+
+Nuestro flujo final será deliberadamente:
+
+```text
+Docusaurus
+    │
+    ▼
+BuildKit
+    │
+    │ single platform
+    │ provenance disabled
+    │ SBOM disabled
+    ▼
+OCI Image Manifest
+    │
+    ▼
+Amazon ECR
+    │
+    ▼
+m3-v1
+    │
+    ▼
+Basic Image Scan
+```
+
+De esta manera aislamos el concepto principal del laboratorio:
+
+> Una aplicación, una plataforma, un image manifest, un tag.
+
+---
+
+## 10. Crear el repositorio privado ECR
+
+Ejecutar:
+
+```bash
+aws ecr create-repository \
+  --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-tag-mutability IMMUTABLE \
   --image-scanning-configuration scanOnPush=true \
   --region "${AWS_REGION}"
 ```
 
-Esperamos una respuesta que incluya información como `repositoryName`, `
-repositoryArn`, `repositoryUri`, `imageTagMutability` contenido en un `JSON`:
+Esperamos información como:
 
-```JSON
+```json
 {
     "repository": {
         "repositoryArn": "arn:aws:ecr:us-east-1:565866186032:repository/lab04-docusaurus",
         "registryId": "565866186032",
         "repositoryName": "lab04-docusaurus",
         "repositoryUri": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus",
-        "createdAt": "2026-10-10T15:43:30.309000-07:00",
+        "createdAt": "2026-10-10T16:26:58.597000-07:00",
         "imageTagMutability": "IMMUTABLE",
         "imageScanningConfiguration": {
             "scanOnPush": true
@@ -348,55 +574,39 @@ repositoryArn`, `repositoryUri`, `imageTagMutability` contenido en un `JSON`:
         }
     }
 }
+
 ```
 
+La propiedad:
 
+```text
+IMMUTABLE
+```
 
-> [!note]
->
-> La propiedad: `IMMUTABLE`, significa que, una vez utilizado un tag, no podremos reemplazar silenciosamente la imagen asociada a ese tag.
->
-> Por ejemplo:
->
-> ```
-> m3-v1
->    │
->    ▼
-> Image A
-> ```
->
-> no podrá convertirse posteriormente en:
->
-> ```
-> m3-v1
->    │
->    ▼
-> Image B
-> ```
->
-> Para publicar otra versión utilizaríamos:
->
-> ```
-> m3-v2
-> ```
->
-> o, posteriormente, el SHA correspondiente al commit.
+significa que mientras:
 
+```text
+m3-v1
+```
 
+exista, no podremos sustituir silenciosamente su contenido por otra imagen.
 
-## 7. Verificar el repositorio
+---
+
+## 11. Verificar el repositorio
 
 Ejecutar:
 
 ```bash
-aws ecr describe-repositories --profile aws-lab \
+aws ecr describe-repositories \
+  --profile aws-lab \
   --repository-names "${ECR_REPOSITORY}" \
   --region "${AWS_REGION}"
 ```
 
-y se obtiene el mismo `JSON` cuando se crea el repositorio,
+Resultando,
 
-````json
+```json
 {
     "repositories": [
         {
@@ -404,7 +614,7 @@ y se obtiene el mismo `JSON` cuando se crea el repositorio,
             "registryId": "565866186032",
             "repositoryName": "lab04-docusaurus",
             "repositoryUri": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus",
-            "createdAt": "2026-10-10T15:43:30.309000-07:00",
+            "createdAt": "2026-10-10T16:26:58.597000-07:00",
             "imageTagMutability": "IMMUTABLE",
             "imageScanningConfiguration": {
                 "scanOnPush": true
@@ -415,54 +625,56 @@ y se obtiene el mismo `JSON` cuando se crea el repositorio,
         }
     ]
 }
-````
+```
 
-También, podemos obtener solamente la `URI`:
+
+
+Obtener únicamente la URI:
 
 ```bash
-aws ecr describe-repositories --profile aws-lab \
+aws ecr describe-repositories \
+  --profile aws-lab \
   --repository-names "${ECR_REPOSITORY}" \
   --region "${AWS_REGION}" \
   --query 'repositories[0].repositoryUri' \
   --output text
 ```
 
-El resultado será similar a:
+Resulta en, `565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus`
 
-```bash
-565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus
-```
 
-## 8. Checkpoint 1 — Repositorio ECR
 
-Verificar:
+---
 
-```
+## 12. Checkpoint 1 — Repositorio ECR
+
+```text
 [ ] AWS CLI funciona
-[ ] aws sts get-caller-identity funciona
-[ ] Región AWS definida
+[ ] aws-lab tiene una sesión válida
+[ ] Región definida
 [ ] Account ID obtenido
-[ ] Repositorio lab04-docusaurus creado
-[ ] Repositorio es privado
+[ ] ECR repository creado
+[ ] Repository es privado
 [ ] Tags configurados como IMMUTABLE
-[ ] Image scanning habilitado para push
+[ ] scanOnPush habilitado
 [ ] Repository URI obtenida
 ```
 
-Resultado esperado:
+Resultado:
 
-```
+```text
 Checkpoint 1: PASS
 ```
 
-## 9. Autenticar Docker contra Amazon ECR
+---
 
-Docker necesita autenticarse contra nuestro registry privado.
+## 13. Autenticar Docker contra Amazon ECR
 
 Ejecutar:
 
 ```bash
-aws ecr get-login-password --profile aws-lab \
+aws ecr get-login-password \
+  --profile aws-lab \
   --region "${AWS_REGION}" \
   | docker login \
       --username AWS \
@@ -473,208 +685,235 @@ Resultado esperado:
 
 ```bash
 WARNING! Your credentials are stored unencrypted in '~/.docker/config.json'.
+Configure a credential helper to remove this warning. See
 
 Login Succeeded
 ```
 
 Conceptualmente:
 
-```
+```text
 AWS CLI
    │
-   │ temporary registry credential
    ▼
-Docker
+Temporary ECR Credential
+   │
+   ▼
+Docker / BuildKit
    │
    ▼
 Amazon ECR
 ```
 
-No estamos almacenando manualmente una contraseña ECR dentro del repositorio.
+---
 
-## 10. Checkpoint 2 — Autenticación
+## 14. Checkpoint 2 — Authentication
 
-Verificar:
-
-```
-[ ] aws ecr get-login-password funciona
-[ ] docker login termina correctamente
-[ ] El registry corresponde a la región correcta
+```text
+[ ] get-login-password funciona
+[ ] docker login funciona
+[ ] Registry corresponde a la región correcta
 [ ] Login Succeeded
-```
-
-Resultado esperado:
-
-```
-Checkpoint 2: PASS
-```
-
-## 11. Verificar nuevamente la imagen local
-
-Ejecutar:
-
-```bash
-docker image ls lab04-docusaurus:local
-```
-
-Antes de publicarla tenemos:
-
-```
-lab04-docusaurus:local
-```
-
-ECR necesita que la imagen tenga un tag con la URI completa del repositorio.
-
-## 12. Etiquetar la imagen para Amazon ECR
-
-Ejecutar:
-
-```bash
-docker tag \
-  lab04-docusaurus:local \
-  "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-```
-
-Ahora verificar:
-
-```
-docker image ls
-```
-
-Podremos observar dos referencias a la misma imagen:
-
-```
-lab04-docusaurus:local
-
-123456789012.dkr.ecr.us-west-2.amazonaws.com/lab04-docusaurus:m3-v1
-```
-
-Conceptualmente:
-
-```
-                  Docker Image
-                       │
-           ┌───────────┴────────────┐
-           │                        │
-           ▼                        ▼
-lab04-docusaurus:local      ECR URI:m3-v1
-```
-
-No hemos duplicado necesariamente el contenido de la imagen.
-
-Hemos creado otra referencia hacia ella.
-
-## 13. Publicar la imagen
-
-Ejecutar:
-
-```bash
-docker push "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-```
-
-Docker comenzará a enviar las capas de la imagen.
-
-La salida será similar conceptualmente a:
-
-```bash
-layer A: pushed
-layer B: pushed
-layer C: pushed
-...
-m3-v1: digest: sha256:...
-```
-
-El dato más importante será:
-
-```bash
-m3-v1: digest: sha256:0b6ee5f9b610c8573d037f45bfa2ff6a5a28acf9bf7f84dd0ae610601db6413b size: 856
-```
-
-Este es el **digest** de la imagen.
-
-## 14. Tag vs Digest
-
-El tag proporciona un nombre amigable:
-
-```
-m3-v1
-```
-
-El digest representa la identidad criptográfica del contenido publicado:
-
-```
-sha256:abc123...
-```
-
-Conceptualmente:
-
-```
-lab04-docusaurus:m3-v1
-            │
-            ▼
-sha256:abc123...
-```
-
-El digest será particularmente importante cuando queramos conocer exactamente qué imagen está ejecutando ECS.
-
-## 15. Checkpoint 3 — Docker push
-
-Verificar:
-
-```
-[ ] Imagen local etiquetada para ECR
-[ ] docker push termina correctamente
-[ ] Todas las capas fueron publicadas
-[ ] Tag m3-v1 existe
-[ ] Docker muestra un sha256 digest
 ```
 
 Resultado:
 
-```
-Checkpoint 3: PASS
+```text
+Checkpoint 2: PASS
 ```
 
-## 16. Verificar la imagen desde AWS CLI
+---
+
+## 15. Construir y publicar un OCI Image Manifest
+
+Ahora construiremos específicamente una imagen:
+
+```text
+linux/amd64
+```
+
+sin provenance ni SBOM attestations.
 
 Ejecutar:
 
 ```bash
-aws ecr describe-images --profile aws-lab\
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --sbom=false \
+  --output type=image,push=true,oci-mediatypes=true \
+  -t "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
+  .
+```
+
+Los parámetros importantes son:
+
+```text
+--platform linux/amd64
+```
+
+Limita el build a una sola plataforma.
+
+```text
+--provenance=false
+```
+
+Evita adjuntar provenance attestations.
+
+```text
+--sbom=false
+```
+
+Evita adjuntar SBOM attestations durante este ejercicio.
+
+```text
+oci-mediatypes=true
+```
+
+Solicita media types OCI.
+
+```text
+push=true
+```
+
+Publica directamente el resultado en el registry.
+
+---
+
+## 16. Por qué no usamos attestations en la imagen final de M3
+
+Esto no significa que:
+
+```text
+provenance
+```
+
+o:
+
+```text
+SBOM
+```
+
+sean características negativas.
+
+Por el contrario, son mecanismos importantes para software supply-chain security.
+
+La decisión de M3 es únicamente pedagógica.
+
+Queremos aislar:
+
+```text
+Single Platform
+      +
+OCI Image Manifest
+      +
+ECR Basic Scanning
+```
+
+Antes de introducir estructuras OCI más sofisticadas.
+
+---
+
+## 17. Verificar el push
+
+La salida de BuildKit deberá terminar mostrando información relacionada con el push y el digest.
+
+Conceptualmente:
+
+```text
+layers
+   │
+   ▼
+manifest
+   │
+   ▼
+Amazon ECR
+   │
+   ▼
+sha256:...
+```
+
+---
+
+## 18. Verificar la imagen desde ECR
+
+Ejecutar:
+
+```bash
+aws ecr describe-images \
+  --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
+  --image-ids imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}"
 ```
 
-Podemos obtener únicamente la información relevante:
+Podemos solicitar información compacta:
 
 ```bash
-aws ecr describe-images --profile aws-lab \
+aws ecr describe-images \
+  --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-ids imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}" \
-  --query 'imageDetails[0].[imageTags,imageDigest,imagePushedAt,imageSizeInBytes]' \
+  --query 'imageDetails[0].[imageTags,imageDigest,imageManifestMediaType,imagePushedAt,imageSizeInBytes]' \
   --output table
 ```
 
-Debemos encontrar:
+Esperamos encontrar:
 
 ```markdown
 -----------------------------------------------------------------------------
 |                              DescribeImages                               |
 +---------------------------------------------------------------------------+
 |  m3-v1                                                                    |
-|  sha256:0b6ee5f9b610c8573d037f45bfa2ff6a5a28acf9bf7f84dd0ae610601db6413b  |
-|  2026-10-10T15:57:48.904000-07:00                                         |
-|  26643737                                                                 |
+|  sha256:2cf6092a4d4bacb046667a418511119752a904523c1c4e404ef1e1b6e1c40fa0  |
+|  application/vnd.oci.image.manifest.v1+json                               |
+|  2026-10-10T16:32:38.135000-07:00                                         |
+|  26646042                                                                 |
 +---------------------------------------------------------------------------+
 ```
 
-## 17. Capturar el digest
+El dato crítico es:
 
-Podemos almacenar el digest:
+```text
+application/vnd.oci.image.manifest.v1+json
+```
+
+y no:
+
+```text
+application/vnd.oci.image.index.v1+json
+```
+
+---
+
+## 19. Checkpoint 3 — Media type
+
+Verificar:
+
+```text
+[ ] m3-v1 existe en ECR
+[ ] Tiene un digest sha256
+[ ] imageManifestMediaType puede consultarse
+[ ] El media type es OCI Image Manifest
+[ ] El tag no apunta a un OCI Image Index
+```
+
+Resultado esperado:
+
+```text
+Checkpoint 3: PASS
+```
+
+---
+
+## 20. Capturar el digest
+
+Ejecutar:
 
 ```bash
-export IMAGE_DIGEST=$(aws ecr describe-images --profile aws-lab \
+export IMAGE_DIGEST=$(aws ecr describe-images \
+  --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-ids imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}" \
@@ -688,70 +927,86 @@ Verificar:
 echo "${IMAGE_DIGEST}"
 ```
 
-Resultado esperado:
+Resultado:
 
-```bash
-sha256:0b6ee5f9b610c8573d037f45bfa2ff6a5a28acf9bf7f84dd0ae610601db6413b
+```text
+sha256:...
 ```
 
-Ahora tenemos tres identificadores importantes:
+Ahora tenemos:
 
-```bash
+```text
 + Repository: lab04-docusaurus
 + Tag: m3-v1
++ Media Type: application/vnd.oci.image.manifest.v1+json
 + Digest: sha256:...
 ```
 
-## 18. Identidad de la imagen
+---
 
-Podemos representar la imagen mediante tag:
+## 21. Tag vs Digest
 
+El tag proporciona una referencia amigable:
+
+```text
+lab04-docusaurus:m3-v1
 ```
-<ECR_REPOSITORY_URI>:m3-v1
-```
 
-o mediante digest:
+El digest identifica exactamente el contenido:
 
-```
-<ECR_REPOSITORY_URI>@sha256:...
+```text
+sha256:...
 ```
 
 Conceptualmente:
 
-```
-Human-friendly reference
-
-lab04-docusaurus:m3-v1
-          │
-          ▼
-Immutable content identity
-
+```text
+m3-v1
+  │
+  ▼
+OCI Image Manifest
+  │
+  ▼
 sha256:...
 ```
 
+Esta relación será muy importante durante M4.
 
+---
 
-## 19. Verificar el vulnerability scan
+## 22. Vulnerability scan
 
-Como el repositorio fue configurado con:
+Como configuramos:
 
-```bash
+```text
 scanOnPush=true
 ```
 
-Amazon ECR iniciará el análisis correspondiente después del push.
+ECR puede iniciar el scan cuando recibe una imagen compatible.
 
-Podemos consultar el estado:
+Consultar:
 
 ```bash
-# Iniciar manualmente el scan si no existe uno
+aws ecr describe-image-scan-findings \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-id imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+```
+
+Si todavía no existe un scan, iniciar manualmente:
+
+```bash
 aws ecr start-image-scan \
   --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-id imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}"
+```
 
-# Consultar resultados
+Después consultar nuevamente:
+
+```bash
 aws ecr describe-image-scan-findings \
   --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
@@ -759,56 +1014,250 @@ aws ecr describe-image-scan-findings \
   --region "${AWS_REGION}"
 ```
 
-Si el análisis todavía está ejecutándose, puede ser necesario volver a consultar posteriormente.
+---
 
-Cuando finalice podremos revisar:
+## 23. Vista compacta del scan
 
-```
-scanStatus
-findingSeverityCounts
-imageDigest
-```
-
-Para una vista compacta:
+Ejecutar:
 
 ```bash
 aws ecr describe-image-scan-findings \
+  --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --image-id imageTag="${IMAGE_TAG}" \
   --region "${AWS_REGION}" \
-  --query '[imageScanStatus.status,imageScanFindings.findingSeverityCounts]' \
+  --query '{
+    Status: imageScanStatus.status,
+    Findings: imageScanFindings.findingSeverityCounts
+  }' \
   --output table
+  
+# O bien si se desea la salida en json
+aws ecr describe-image-scan-findings \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-id imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}" \
+  --query '{
+    Status: imageScanStatus.status,
+    Findings: imageScanFindings.findingSeverityCounts
+  }' \
+  --output json
+```
+
+Podemos encontrar categorías como:
+
+```text
+CRITICAL
+HIGH
+MEDIUM
+LOW
+INFORMATIONAL
 ```
 
 La existencia de findings no significa automáticamente que la imagen no pueda ejecutarse.
 
-La información debe utilizarse para conocer y evaluar vulnerabilidades presentes en las capas de la imagen.
+El scan proporciona información para evaluar el riesgo de las dependencias y paquetes presentes.
 
+---
 
+## 24. Checkpoint 4 — Vulnerability scan
 
-## 20. Checkpoint 4 — Verificación ECR
-
-Verificar:
-
-```
-[ ] describe-images encuentra m3-v1
-[ ] La imagen tiene digest sha256
-[ ] imagePushedAt está disponible
-[ ] El digest fue registrado
-[ ] El estado del vulnerability scan puede consultarse
+```text
+[ ] El image manifest es compatible con el scanner
+[ ] describe-image-scan-findings funciona
+[ ] El scan puede iniciarse si fuera necesario
+[ ] El estado del scan puede consultarse
+[ ] findingSeverityCounts puede revisarse
 ```
 
-Resultado esperado:
+Resultado:
 
-```
+```text
 Checkpoint 4: PASS
 ```
 
-## 21. Verificar la imagen desde AWS Console
+---
 
-También podemos revisar:
+## 25. Troubleshooting real — ScanNotFoundException
 
+Durante la primera ejecución observamos:
+
+```text
+ScanNotFoundException
 ```
+
+al ejecutar:
+
+```bash
+aws ecr describe-image-scan-findings ...
+```
+
+Interpretación:
+
+```text
+Image exists
+     │
+     ▼
+No scan exists for that artifact
+```
+
+Esto no indicaba que:
+
+```text
+docker push
+```
+
+hubiera fallado.
+
+Indicaba únicamente que ECR no tenía un scan asociado al artefacto consultado.
+
+---
+
+## 26. Troubleshooting real — UnsupportedImageTypeException
+
+Posteriormente se ejecutó:
+
+```bash
+aws ecr start-image-scan ...
+```
+
+y se obtuvo:
+
+```text
+UnsupportedImageTypeException
+```
+
+con:
+
+```text
+application/vnd.oci.image.index.v1+json
+```
+
+La cadena del diagnóstico fue:
+
+```text
+m3-v1
+   │
+   ▼
+OCI Image Index
+   │
+   ▼
+ECR Basic Scanner
+   │
+   X
+UnsupportedImageTypeException
+```
+
+El problema no estaba en:
+
+- NGINX;
+- Docusaurus;
+- Alpine;
+- Docker layers;
+- ECR authentication.
+
+El problema era el **tipo de artefacto** que estaba siendo solicitado al scanner.
+
+---
+
+## 27. Resolución del hallazgo
+
+La imagen se reconstruye deliberadamente como:
+
+```text
+single platform
++
+no provenance attestation
++
+no SBOM attestation
++
+OCI media types
+```
+
+mediante:
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --sbom=false \
+  --output type=image,push=true,oci-mediatypes=true \
+  -t "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
+  .
+```
+
+El resultado deseado es:
+
+```text
+application/vnd.oci.image.manifest.v1+json
+```
+
+---
+
+## 28. Si m3-v1 ya existe por una ejecución anterior
+
+Como el repositorio utiliza:
+
+```text
+IMMUTABLE
+```
+
+no debemos intentar sobrescribir:
+
+```text
+m3-v1
+```
+
+Si estamos repitiendo M3 porque una ejecución anterior publicó un OCI Image Index, eliminaremos primero esa imagen y reutilizaremos **el mismo tag**.
+
+Ejecutar:
+
+```bash
+aws ecr batch-delete-image \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-ids imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+```
+
+Verificar:
+
+```bash
+aws ecr describe-images \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --region "${AWS_REGION}"
+```
+
+Después ejecutar nuevamente el build correcto.
+
+La secuencia será:
+
+```text
+Incorrect m3-v1
+OCI Image Index
+       │
+       ▼
+delete image
+       │
+       ▼
+rebuild
+       │
+       ▼
+m3-v1
+OCI Image Manifest
+```
+
+No introducimos otro tag.
+
+---
+
+## 29. Verificar desde AWS Console
+
+Navegar:
+
+```text
 AWS Console
    │
    ▼
@@ -821,139 +1270,59 @@ Private repositories
 lab04-docusaurus
 ```
 
-Dentro del repositorio debemos observar la imagen:
+Localizar:
 
-```
-Tag:
-m3-v1
-
-Digest:
-sha256:...
-
-Pushed at:
-...
-
-Size:
-...
-```
-
-Esta validación visual puede conservarse como evidencia del milestone.
-
-## 22. Prueba de inmutabilidad
-
-Nuestro repositorio fue creado utilizando:
-
-```
-IMMUTABLE
-```
-
-Podemos comprobar conceptualmente qué protege esta configuración.
-
-El tag:
-
-```
+```text
 m3-v1
 ```
 
-ya identifica una imagen.
+Registrar como evidencia:
 
-Si posteriormente modificáramos el contenido, reconstruyéramos una imagen diferente e intentáramos publicar nuevamente:
-
-```
-m3-v1
-```
-
-ECR debe impedir reemplazar el tag existente.
-
-No es necesario provocar este error para cerrar M3.
-
-La regla operacional será:
-
-```
-Nueva imagen
-    │
-    ▼
-Nuevo tag
+```text
+Tag
+Digest
+Media type
+Pushed at
+Size
+Scan status
 ```
 
-Por ejemplo:
+---
 
-```
-m3-v1
-m3-v2
-m3-v3
-```
+## 30. Descargar la imagen desde ECR
 
-Posteriormente:
+Autenticar Docker si fuera necesario:
 
-```
-<git-sha>
-```
-
-## 23. Prueba importante — recuperar la imagen desde ECR
-
-Hasta aquí comprobamos:
-
-```
-Local
-  │
-  ▼
-ECR
+```bash
+aws ecr get-login-password \
+  --profile aws-lab \
+  --region "${AWS_REGION}" \
+  | docker login \
+      --username AWS \
+      --password-stdin "${ECR_REGISTRY}"
 ```
 
-Ahora probaremos también:
+Descargar:
 
-```
-ECR
- │
- ▼
-Local
-```
-
-Esto nos permite demostrar que la imagen almacenada en ECR puede recuperarse.
-
-Primero eliminar únicamente la referencia ECR local:
-
-```
-docker image rm "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-```
-
-La referencia original:
-
-```
-lab04-docusaurus:local
-```
-
-puede permanecer.
-
-## 24. Descargar la imagen desde ECR
-
-Ejecutar:
-
-```
+```bash
 docker pull "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
 ```
 
-Esperamos que Docker descargue o reutilice las capas correspondientes y muestre el digest.
-
 Verificar:
 
-```
+```bash
 docker image ls
 ```
 
-Ahora deberá aparecer nuevamente:
+---
 
-```
-${ECR_REPOSITORY_URI}:m3-v1
-```
-
-## 25. Ejecutar directamente la imagen proveniente de ECR
+## 31. Ejecutar la imagen obtenida desde ECR
 
 Ejecutar:
 
-```
+```bash
 docker run \
+  --rm \
   --name lab04-ecr-test \
   -d \
   -p 8080:80 \
@@ -962,232 +1331,243 @@ docker run \
 
 Verificar:
 
-```
+```bash
 docker ps
 ```
 
-## 26. Smoke test
+---
+
+## 32. Smoke test
 
 Comprobar:
 
-```
+```bash
 curl -I http://localhost:8080
 ```
 
 Resultado esperado:
 
-```
+```text
 HTTP/1.1 200 OK
 Server: nginx
 ```
 
-También podemos reutilizar la prueba de rutas aprendida durante M2:
+También podemos verificar una página Docusaurus:
 
-```
+```bash
 curl -I -L \
   http://localhost:8080/docs/m1-docusaurus-bootstrap
 ```
 
-El flujo puede ser:
+Como aprendimos en M2, un flujo válido puede ser:
 
-```
+```text
 301
  ↓
 200
 ```
 
-Esto es válido según lo documentado en M2.
+---
 
-## 27. Checkpoint 5 — Registry round trip
+## 33. Checkpoint 5 — Registry round trip
 
-Esta prueba completa un ciclo muy importante:
-
-```
-Local Image
-     │
-     ▼
-docker push
-     │
-     ▼
+```text
+OCI Image Manifest
+       │
+       ▼
 Amazon ECR
-     │
-     ▼
+       │
+       ▼
 docker pull
-     │
-     ▼
-Local Container
-     │
-     ▼
+       │
+       ▼
+Docker Image
+       │
+       ▼
+Container
+       │
+       ▼
 HTTP 200
 ```
 
 Verificar:
 
-```
+```text
 [ ] Imagen descargada desde ECR
-[ ] docker run funciona utilizando la URI ECR
+[ ] docker run funciona
 [ ] localhost:8080 responde HTTP 200
 [ ] Docusaurus carga correctamente
-[ ] Las rutas funcionan
+[ ] Rutas de documentación funcionan
 ```
 
 Resultado:
 
-```
+```text
 Checkpoint 5: PASS
 ```
 
-## 28. Limpiar el contenedor de prueba
+---
+
+## 34. Limpiar el contenedor local
 
 Ejecutar:
 
-```
+```bash
 docker stop lab04-ecr-test
 ```
 
 Después:
 
-```
+```bash
 docker rm lab04-ecr-test
 ```
 
-El repositorio ECR y la imagen publicada **no se eliminarán todavía**, porque serán utilizados por M4.
+No eliminar:
 
-## 29. Troubleshooting — No basic auth credentials
-
-Síntoma posible:
-
+```text
+Amazon ECR repository
+m3-v1
 ```
+
+porque serán utilizados durante M4.
+
+---
+
+## 35. Revisar arquitectura de la imagen
+
+Ejecutar:
+
+```bash
+docker image inspect \
+  "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
+  --format '{{.Os}}/{{.Architecture}}'
+```
+
+Resultado esperado:
+
+```text
+linux/amd64
+```
+
+Este dato será necesario al configurar posteriormente la Task Definition de ECS/Fargate.
+
+---
+
+## 36. Troubleshooting — No basic auth credentials
+
+Síntoma:
+
+```text
 no basic auth credentials
 ```
 
-Revisar primero la autenticación:
+Solución:
 
-```
+```bash
 aws ecr get-login-password \
+  --profile aws-lab \
   --region "${AWS_REGION}" \
   | docker login \
       --username AWS \
       --password-stdin "${ECR_REGISTRY}"
 ```
 
-También verificar que la región de:
+Verificar siempre:
 
-```
-get-login-password
-```
-
-corresponda con la región donde existe el repositorio ECR.
-
-Conceptualmente:
-
-```
-ECR repository region
-        =
-docker login region
+```text
+ECR Region
+=
+Login Region
 ```
 
-## 30. Troubleshooting — Repository does not exist
+---
 
-Si `docker push` indica que el repositorio no existe, verificar:
+## 37. Troubleshooting — Repository does not exist
 
-```
+Verificar:
+
+```bash
 aws ecr describe-repositories \
+  --profile aws-lab \
   --region "${AWS_REGION}"
 ```
 
-También revisar:
+Después:
 
-```
+```bash
 echo "${ECR_REPOSITORY_URI}"
 ```
 
-Las causas comunes incluyen:
+Posibles causas:
 
-```
-Wrong AWS Region
+```text
+Wrong AWS region
 Wrong repository name
 Wrong AWS account
-Incorrect URI
+Incorrect repository URI
 ```
 
-## 31. Troubleshooting — AccessDenied
+---
 
-Si AWS responde con:
+## 38. Troubleshooting — AccessDenied
 
-```
-AccessDenied
-```
+Comprobar la identidad:
 
-verificar primero qué identidad estamos utilizando:
-
-```
-aws sts get-caller-identity
+```bash
+aws sts get-caller-identity \
+  --profile aws-lab
 ```
 
-La identidad debe tener permisos suficientes para las operaciones de ECR utilizadas durante el laboratorio.
+La identidad debe disponer de permisos ECR suficientes para las operaciones del laboratorio.
 
-No debemos resolver este problema creando credenciales dentro del repositorio.
+No debemos solucionar problemas de permisos almacenando access keys dentro del repositorio.
 
-## 32. Troubleshooting — Immutable tag
+---
 
-Si posteriormente intentamos publicar una imagen diferente utilizando un tag ya existente como:
+## 39. Troubleshooting — Immutable tag
 
-```
+Si:
+
+```text
 m3-v1
 ```
 
-ECR puede rechazar la operación porque configuramos:
+ya existe, ECR no permitirá reemplazarlo porque configuramos:
 
-```
+```text
 IMMUTABLE
 ```
 
-La solución es crear una nueva versión:
+Para reiniciar este milestone conservando el mismo tag:
 
-```
-export IMAGE_TAG="m3-v2"
-```
-
-Etiquetar:
-
-```
-docker tag \
-  lab04-docusaurus:local \
-  "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+```bash
+aws ecr batch-delete-image \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-ids imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
 ```
 
-Y publicar:
+Después volver a construir y publicar:
 
-```
-docker push "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-```
-
-Esto es un comportamiento deseado, no un defecto.
-
-## 33. Revisar arquitectura de la imagen
-
-Antes de utilizar la imagen posteriormente en Fargate podemos registrar su arquitectura:
-
-```
-docker image inspect \
-  lab04-docusaurus:local \
-  --format '{{.Os}}/{{.Architecture}}'
+```text
+m3-v1
 ```
 
-Ejemplo:
+Esto preserva la simplicidad del hands-on:
 
+```text
+M3
+└── m3-v1
 ```
-linux/amd64
-```
 
-Conservaremos este dato para M4, ya que la arquitectura configurada para la tarea ECS debe ser compatible con la imagen que ejecutaremos.
+---
 
-## 34. Evidencia del milestone
+## 40. Evidencia del milestone
 
 Registrar:
 
-```
+```text
 Milestone:
 M3 — Publicación de la imagen en Amazon ECR
 
@@ -1195,95 +1575,140 @@ Status:
 PASS / FAIL
 
 AWS:
+- Profile: aws-lab
 - Region:
 - Account ID:
 - ECR Repository:
 - Repository URI:
 
 Image:
-- Local image: lab04-docusaurus:local
-- ECR tag: m3-v1
-- Digest: sha256:...
-- Architecture:
+- Tag: m3-v1
+- Platform: linux/amd64
+- Media Type:
+- Digest:
 - Size:
 
-Repository configuration:
+Repository:
 - Visibility: Private
 - Tag mutability: IMMUTABLE
 - Scan on push: Enabled
 
+OCI Experiment:
+- OCI Image Index artifact generated:
+- Provenance enabled:
+- SBOM enabled:
+- index.json inspected:
+
+Final OCI Image:
+- Provenance disabled:
+- SBOM disabled:
+- Media Type verified:
+- Expected: application/vnd.oci.image.manifest.v1+json
+
 Validation:
-- aws sts get-caller-identity:
-- docker login:
-- docker push:
+- AWS login:
+- Docker/ECR authentication:
+- Buildx push:
 - describe-images:
 - vulnerability scan:
 - docker pull:
 - docker run:
 - HTTP smoke test:
 
-Evidence:
-- ECR console screenshot:
-- docker push output:
-- image digest:
-- describe-images:
-- curl HTTP 200:
+Observed issues:
+- ScanNotFoundException
+- UnsupportedImageTypeException
 
-Issues found:
-- Ninguno / descripción
+Root cause:
+- m3-v1 initially referenced an OCI Image Index.
 
 Resolution:
-- N/A / descripción
+- Built a single-platform OCI Image Manifest without provenance/SBOM
+  attestations for this exercise.
+
+Final validation:
+- Media type is OCI Image Manifest.
+- Vulnerability scan can be queried.
+- Image can be pulled.
+- Container returns HTTP 200.
 ```
 
-## 35. Checklist final de M3
+---
 
-```
+## 41. Checklist final de M3
+
+```text
 M3 — Publicación de la imagen en Amazon ECR
 
-[ ] M2 está completado
-[ ] Imagen lab04-docusaurus:local existe
+[ ] M2 completado
+[ ] Docker funciona
+[ ] Docker Buildx funciona
 [ ] AWS CLI funciona
-[ ] Identidad AWS verificada
-[ ] Región AWS definida
-[ ] Amazon ECR repository creado
+[ ] aws-lab autenticado
+[ ] Región definida
+[ ] ECR repository creado
 [ ] Repository es privado
-[ ] Tag mutability configurado como IMMUTABLE
-[ ] Scan on push configurado
+[ ] IMMUTABLE habilitado
+[ ] scanOnPush habilitado
 [ ] Docker autenticado contra ECR
-[ ] Imagen etiquetada como m3-v1
-[ ] docker push completado
-[ ] Imagen visible en Amazon ECR
+
+OCI concepts:
+
+[ ] Diferencia entre Image Manifest e Image Index comprendida
+[ ] OCI Image Index experimental generado localmente
+[ ] index.json inspeccionado
+[ ] Provenance/SBOM relacionados con attestations observados
+
+Final image:
+
+[ ] Una sola plataforma utilizada
+[ ] linux/amd64 configurado
+[ ] provenance=false
+[ ] sbom=false
+[ ] OCI media types habilitados
+[ ] Único tag m3-v1 utilizado
+[ ] Imagen publicada en ECR
+[ ] Media type verificado
+[ ] Media type corresponde a un Image Manifest
 [ ] Digest sha256 registrado
-[ ] describe-images encuentra la imagen
+
+Security:
+
 [ ] Vulnerability scan consultado
-[ ] Imagen descargada nuevamente desde ECR
-[ ] Imagen ECR ejecutada localmente
+[ ] ScanNotFoundException comprendido
+[ ] UnsupportedImageTypeException comprendido
+
+Registry round trip:
+
+[ ] docker pull completado
+[ ] docker run completado
 [ ] GET / responde HTTP 200
 [ ] Navegación Docusaurus funciona
-[ ] Arquitectura de la imagen registrada
+[ ] Arquitectura linux/amd64 registrada
 ```
 
-Si todas las verificaciones son correctas:
+Si todo es correcto:
 
-```
+```text
 M3 STATUS: PASS
 ```
 
-## 36. Qué demostramos en M3
+---
 
-M1 demostró:
+## 42. Qué demostramos en M3
 
-```
+M1:
+
+```text
 Source
   │
   ▼
 Docusaurus Build
 ```
 
-M2 extendió el flujo:
+M2:
 
-```
+```text
 Source
   │
   ▼
@@ -1293,167 +1718,210 @@ Docker Image
 Local Container
 ```
 
-M3 incorpora un registry remoto:
+M3:
 
-```
+```text
 Source
   │
   ▼
-Docker Image
+BuildKit
+  │
+  ▼
+OCI Image Manifest
   │
   ▼
 Amazon ECR
   │
-  ▼
-Versioned Image
+  ├── tag: m3-v1
+  │
+  ├── digest: sha256
+  │
+  └── vulnerability scan
   │
   ▼
-Digest
-```
-
-Y, mediante la prueba de descarga:
-
-```
-Amazon ECR
-    │
-    ▼
 docker pull
-    │
-    ▼
-Docker Image
-    │
-    ▼
+  │
+  ▼
 Container
-    │
-    ▼
+  │
+  ▼
 HTTP 200
 ```
 
-Con esto demostramos que Amazon ECR almacena correctamente un artefacto que ya habíamos validado localmente.
+También demostramos que:
 
-## 37. Separación conceptual importante
-
-Al terminar M3 tendremos:
-
+```text
+OCI Image Manifest
+        ≠
+OCI Image Index
 ```
-Image published
+
+y comprendimos por qué una estructura OCI válida puede no ser adecuada para una operación concreta como el Basic Image Scan del escenario estudiado.
+
+---
+
+## 43. Aprendizaje adicional — Software Supply Chain
+
+El hallazgo de M3 introduce anticipadamente conceptos de software supply-chain security:
+
+```text
+Container Image
+     │
+     ├── provenance
+     ├── SBOM
+     ├── attestations
+     └── signatures
+```
+
+En este laboratorio deshabilitamos provenance y SBOM únicamente para obtener un artefacto simple y compatible con el flujo de scanning que estamos estudiando.
+
+En un entorno productivo estos mecanismos deberían evaluarse como características de seguridad, no eliminarse automáticamente.
+
+---
+
+## 44. Separación conceptual importante
+
+Al finalizar M3 tenemos:
+
+```text
+Image Published
 ```
 
 pero todavía no:
 
-```
-Application deployed
+```text
+Application Deployed
 ```
 
-Es decir:
+Amazon ECR:
 
+```text
+stores container artifacts
 ```
+
+No ejecuta nuestra aplicación.
+
+---
+
+## 45. Conservación del recurso para M4
+
+No eliminaremos:
+
+```text
+lab04-docusaurus:m3-v1
+```
+
+ni el repositorio ECR.
+
+M4 utilizará exactamente este artefacto:
+
+```text
 Amazon ECR
-     │
-     ▼
-Stores images
-```
-
-no equivale a:
-
-```
-Application running
-```
-
-Esta distinción será fundamental durante el siguiente milestone.
-
-## 38. Conservación del recurso para M4
-
-Normalmente nuestros laboratorios terminan eliminando los recursos creados.
-
-Sin embargo, **no eliminaremos todavía el repositorio ECR**, porque será utilizado directamente por:
-
-```
-M4 — Deployment manual en Amazon ECS + AWS Fargate
-```
-
-M4 utilizará:
-
-```
-ECR Repository
       │
       ▼
 lab04-docusaurus:m3-v1
+      │
+      ▼
+OCI Image Manifest
       │
       ▼
 ECS Task Definition
       │
       ▼
-Fargate Task
+AWS Fargate
 ```
 
-El teardown definitivo se realizará durante M8.
+Esto nos permitirá conectar directamente:
 
-## 39. Limpieza opcional
-
-Si se decide detener completamente el laboratorio antes de continuar con M4, el repositorio puede eliminarse.
-
-**Advertencia:** eliminar un repositorio ECR elimina también sus imágenes cuando se utiliza eliminación forzada.
-
-Comando:
-
+```text
+Tag
++
+Digest
++
+Architecture
 ```
+
+con la Task Definition.
+
+---
+
+46. Limpieza opcional
+
+Si se decide abandonar completamente el laboratorio antes de M4:
+
+```bash
 aws ecr delete-repository \
+  --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
   --force \
   --region "${AWS_REGION}"
 ```
 
-No ejecutar este comando si se continuará inmediatamente con M4.
+No ejecutar este comando si se continuará con M4.
 
-## 40. Commit del milestone
+También podemos eliminar el artefacto local utilizado para estudiar OCI Index:
 
-La creación del repositorio ECR no modifica necesariamente el código fuente.
-
-Sin embargo, después de agregar esta documentación podemos registrar el milestone:
-
+```bash
+rm -f lab04-oci-index.tar
+rm -rf /tmp/lab04-oci-index
 ```
+
+---
+
+## 47. Commit del milestone
+
+Revisar:
+
+```bash
 git status
 ```
 
-Después:
+Agregar la documentación:
 
-```
+```bash
 git add .
 ```
 
 Commit sugerido:
 
-```
-git commit -m "docs: add Amazon ECR milestone"
+```bash
+git commit -m "docs: complete Amazon ECR milestone"
 ```
 
 Publicar:
 
-```
+```bash
 git push
 ```
 
-## 41. Preparación para M4
+---
+
+## 48. Preparación para M4
 
 El siguiente milestone será:
 
-```
+```text
 M4 — Deployment manual en Amazon ECS + AWS Fargate
 ```
 
-Partiremos de:
+Partiremos exactamente de:
 
-```
+```text
 Amazon ECR
-    │
-    ▼
+      │
+      ▼
 lab04-docusaurus:m3-v1
+      │
+      ▼
+linux/amd64
+      │
+      ▼
+OCI Image Manifest
 ```
 
 y construiremos:
 
-```
+```text
 Amazon ECR
       │
       ▼
@@ -1472,30 +1940,16 @@ Docusaurus + NGINX
 Remote HTTP Request
 ```
 
-Por primera vez tendremos nuestra aplicación ejecutándose dentro de AWS.
+Por primera vez tendremos la aplicación ejecutándose dentro de AWS.
 
-Todavía realizaremos este deployment **manualmente**.
-
-GitHub Actions y OIDC aparecerán posteriormente, una vez que hayamos demostrado que:
-
-```
-Docker
-  +
-ECR
-  +
-ECS
-  +
-Fargate
-```
-
-funcionan correctamente por sí mismos.
+---
 
 ## Criterio de salida
 
 M3 puede considerarse cerrado cuando:
 
-> La imagen Docker de Docusaurus puede autenticarse, etiquetarse y publicarse manualmente en un repositorio privado Amazon ECR; la imagen dispone de un tag versionado y un digest verificable, puede descargarse nuevamente desde ECR y ejecutarse localmente con un smoke test HTTP satisfactorio.
+> Se comprende experimentalmente la diferencia entre OCI Image Index y OCI Image Manifest; `lab04-docusaurus:m3-v1` se publica como una imagen single-platform con media type de image manifest, dispone de digest verificable, puede analizarse mediante Amazon ECR Basic Scanning, descargarse nuevamente desde ECR y ejecutarse localmente con un smoke test HTTP satisfactorio.
 
-```
+```text
 M3 STATUS: PASS
 ```
