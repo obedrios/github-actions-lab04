@@ -1,0 +1,27 @@
+{
+  "family": "lab04-docusaurus",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::565866186032:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "lab04-docusaurus",
+      "image": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus:m3-v1",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  ]
+}

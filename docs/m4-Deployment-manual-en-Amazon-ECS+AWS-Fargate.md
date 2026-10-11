@@ -247,20 +247,20 @@ pero esa complejidad no es necesaria para demostrar los conceptos centrales de M
 
 Verificar sesión AWS:
 
-```
+```bash
 aws sts get-caller-identity \
   --profile aws-lab
 ```
 
 Definir región:
 
-```
+```bash
 export AWS_REGION="us-east-1"
 ```
 
 Definir variables:
 
-```
+```bash
 export ECS_CLUSTER="lab04-cluster"
 export ECS_SERVICE="lab04-service"
 export TASK_FAMILY="lab04-docusaurus"
@@ -271,7 +271,7 @@ export IMAGE_TAG="m3-v1"
 
 Obtener Account ID:
 
-```
+```bash
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
   --profile aws-lab \
   --query Account \
@@ -280,20 +280,20 @@ export AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
 
 Construir URI ECR:
 
-```
+```bash
 export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 export ECR_REPOSITORY_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}"
 ```
 
 Construir referencia de imagen:
 
-```
+```bash
 export IMAGE_URI="${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
 ```
 
 Verificar:
 
-```
+```bash
 echo "${IMAGE_URI}"
 ```
 
@@ -301,7 +301,7 @@ echo "${IMAGE_URI}"
 
 Ejecutar:
 
-```
+```bash
 aws ecr describe-images \
   --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
@@ -313,17 +313,19 @@ aws ecr describe-images \
 
 Esperamos encontrar:
 
-```
-m3-v1
-
-sha256:...
-
-application/vnd.oci.image.manifest.v1+json
+```markdown
+-----------------------------------------------------------------------------
+|                              DescribeImages                               |
++---------------------------------------------------------------------------+
+|  m3-v1                                                                    |
+|  sha256:2cf6092a4d4bacb046667a418511119752a904523c1c4e404ef1e1b6e1c40fa0  |
+|  application/vnd.oci.image.manifest.v1+json                               |
++---------------------------------------------------------------------------+
 ```
 
 Guardar el digest:
 
-```
+```bash
 export EXPECTED_IMAGE_DIGEST=$(aws ecr describe-images \
   --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
@@ -335,7 +337,7 @@ export EXPECTED_IMAGE_DIGEST=$(aws ecr describe-images \
 
 Verificar:
 
-```
+```bash
 echo "${EXPECTED_IMAGE_DIGEST}"
 ```
 
@@ -361,16 +363,43 @@ Checkpoint 1: PASS
 
 Crear:
 
-```
+```bash
 aws ecs create-cluster \
   --profile aws-lab \
   --cluster-name "${ECS_CLUSTER}" \
   --region "${AWS_REGION}"
 ```
 
-Verificar:
+Lo que resulta en,
+
+```json
+{
+    "cluster": {
+        "clusterArn": "arn:aws:ecs:us-east-1:565866186032:cluster/lab04-cluster",
+        "clusterName": "lab04-cluster",
+        "status": "ACTIVE",
+        "registeredContainerInstancesCount": 0,
+        "runningTasksCount": 0,
+        "pendingTasksCount": 0,
+        "activeServicesCount": 0,
+        "statistics": [],
+        "tags": [],
+        "settings": [
+            {
+                "name": "containerInsights",
+                "value": "disabled"
+            }
+        ],
+        "capacityProviders": [],
+        "defaultCapacityProviderStrategy": []
+    }
+}
 
 ```
+
+Verificar:
+
+```bash
 aws ecs describe-clusters \
   --profile aws-lab \
   --clusters "${ECS_CLUSTER}" \
@@ -381,11 +410,16 @@ aws ecs describe-clusters \
 
 Esperamos inicialmente algo similar a:
 
-```
-lab04-cluster
-ACTIVE
-0
-0
+```markdown
+-------------------
+|DescribeClusters |
++-----------------+
+|  lab04-cluster  |
+|  ACTIVE         |
+|  0              |
+|  0              |
++-----------------+
+
 ```
 
 ## 8. Entender el ECS Cluster
@@ -416,19 +450,19 @@ La Fargate Task debe poder realizar operaciones necesarias durante su arranque, 
 
 Crearemos:
 
-```
+```bash
 ecsTaskExecutionRole
 ```
 
 Primero crear:
 
-```
+```bash
 ecs-tasks-trust-policy.json
 ```
 
 Contenido:
 
-```
+```json
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -445,27 +479,55 @@ Contenido:
 
 Crear el role:
 
-```
+```bash
 aws iam create-role \
   --profile aws-lab \
   --role-name ecsTaskExecutionRole \
   --assume-role-policy-document file://ecs-tasks-trust-policy.json
 ```
 
-Asociar la política administrada:
+respondiendo,
 
-```
+````json
+{
+    "Role": {
+        "Path": "/",
+        "RoleName": "ecsTaskExecutionRole",
+        "RoleId": "AROAYHQCAYUYHWUALR7FR",
+        "Arn": "arn:aws:iam::565866186032:role/ecsTaskExecutionRole",
+        "CreateDate": "2026-10-11T00:09:59+00:00",
+        "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "ecs-tasks.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }
+    }
+}
+````
+
+Ahora, se necesita asociar la política administrada:
+
+```bash
 aws iam attach-role-policy \
   --profile aws-lab \
   --role-name ecsTaskExecutionRole \
   --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 ```
 
+
+
 ## 10. Obtener ARN del Execution Role
 
 Ejecutar:
 
-```
+```bash
 export ECS_EXECUTION_ROLE_ARN=$(aws iam get-role \
   --profile aws-lab \
   --role-name ecsTaskExecutionRole \
@@ -475,14 +537,14 @@ export ECS_EXECUTION_ROLE_ARN=$(aws iam get-role \
 
 Verificar:
 
-```
+```bash
 echo "${ECS_EXECUTION_ROLE_ARN}"
 ```
 
 Resultado similar:
 
 ```
-arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole
+arn:aws:iam::565866186032:role/ecsTaskExecutionRole
 ```
 
 ## 11. Execution Role vs Task Role
@@ -547,7 +609,7 @@ Para simplificar M4 utilizaremos la VPC por defecto de la cuenta si está dispon
 
 Obtener:
 
-```
+```bash
 export VPC_ID=$(aws ec2 describe-vpcs \
   --profile aws-lab \
   --filters Name=isDefault,Values=true \
@@ -558,7 +620,7 @@ export VPC_ID=$(aws ec2 describe-vpcs \
 
 Verificar:
 
-```
+```bash
 echo "${VPC_ID}"
 ```
 
@@ -574,7 +636,7 @@ la cuenta no dispone de una default VPC y será necesario seleccionar o crear un
 
 Listar subnets:
 
-```
+```bash
 aws ec2 describe-subnets \
   --profile aws-lab \
   --filters Name=vpc-id,Values="${VPC_ID}" \
@@ -583,19 +645,36 @@ aws ec2 describe-subnets \
   --output table
 ```
 
+En este caso resulta, 
+
+````markdown
+----------------------------------------------------
+|                  DescribeSubnets                 |
++---------------------------+--------------+-------+
+|  subnet-019b14238ca1cdd90 |  us-east-1f  |  True |
+|  subnet-0f7eb8f3bc2efdb6a |  us-east-1a  |  True |
+|  subnet-08be8c13c9e1d8fb7 |  us-east-1e  |  True |
+|  subnet-0a9eb77bbb3a533d9 |  us-east-1b  |  True |
+|  subnet-0f3d68ca8a80fb911 |  us-east-1d  |  True |
+|  subnet-051b9e19e874862de |  us-east-1c  |  True |
++---------------------------+--------------+-------+
+````
+
 Seleccionar una subnet apropiada.
 
 Por ejemplo:
 
-```
-export SUBNET_ID="subnet-xxxxxxxx"
+```bash
+export SUBNET_ID="subnet-0f7eb8f3bc2efdb6a" 
 ```
 
 Verificar:
 
-```
+```bash
 echo "${SUBNET_ID}"
 ```
+
+
 
 ## 15. Verificar acceso público de la subnet
 
@@ -603,29 +682,104 @@ Una subnet pública necesita una ruta hacia un Internet Gateway.
 
 Podemos inspeccionar las route tables asociadas:
 
-```
+```bash
+# Lista todas las routes asociadas
 aws ec2 describe-route-tables \
   --profile aws-lab \
-  --filters Name=association.subnet-id,Values="${SUBNET_ID}" \
+  --filters Name=vpc-id,Values="${VPC_ID}" \
   --region "${AWS_REGION}" \
-  --query 'RouteTables[*].Routes[*].[DestinationCidrBlock,GatewayId]' \
+  --query 'RouteTables[*].[RouteTableId,Associations,Routes]' \
+  --output json
+
+# Para identificar la main route table
+aws ec2 describe-route-tables \
+  --profile aws-lab \
+  --filters \
+    Name=vpc-id,Values="${VPC_ID}" \
+    Name=association.main,Values=true \
+  --region "${AWS_REGION}" \
+  --query 'RouteTables[0].[RouteTableId,Associations]' \
+  --output json  
+  
+# Despues consultamos sus rutas
+export ROUTE_TABLE_ID=$(aws ec2 describe-route-tables \
+  --profile aws-lab \
+  --filters \
+    Name=vpc-id,Values="${VPC_ID}" \
+    Name=association.main,Values=true \
+  --region "${AWS_REGION}" \
+  --query 'RouteTables[0].RouteTableId' \
+  --output text)
+  
+echo "${ROUTE_TABLE_ID}"
+
+# Despues
+aws ec2 describe-route-tables \
+  --profile aws-lab \
+  --route-table-ids "${ROUTE_TABLE_ID}" \
+  --region "${AWS_REGION}" \
+  --query 'RouteTables[0].Routes[*].[DestinationCidrBlock,GatewayId,State]' \
   --output table
 ```
 
 Buscamos conceptualmente:
 
-```
-0.0.0.0/0
+```markdown
+Public Subnet
+      │
+      │ implicit association
+      ▼
+Main Route Table
+      │
+      │ 0.0.0.0/0
+      ▼
+Internet Gateway
       │
       ▼
-igw-...
+Internet
 ```
+
+así la respuesta,
+
+```markdown
+------------------------------------------------------
+|                 DescribeRouteTables                |
++----------------+-------------------------+---------+
+|  172.31.0.0/16 |  local                  |  active |
+|  0.0.0.0/0     |  igw-063bc2c7e042dce7d  |  active |
++----------------+-------------------------+---------+
+```
+
+Finalmente, una segunda comprobación importante antes de continuar con ECS/Fargate: verificar si la subnet permite asignación automática de public IP.
+
+````bash
+aws ec2 describe-subnets \
+  --profile aws-lab \
+  --subnet-ids "${SUBNET_ID}" \
+  --region "${AWS_REGION}" \
+  --query 'Subnets[0].[SubnetId,AvailabilityZone,MapPublicIpOnLaunch]' \
+  --output table
+````
+
+Lo importante es buscar true como asignación  automática de direccion IP publica,
+
+````markdown
+------------------------------
+|       DescribeSubnets      |
++----------------------------+
+|  subnet-0f7eb8f3bc2efdb6a  |
+|  us-east-1a                |
+|  True                      |
++----------------------------+
+````
+
+
 
 ## 16. Crear Security Group
 
 Crear:
 
-```
+```bash
 export SECURITY_GROUP_ID=$(aws ec2 create-security-group \
   --profile aws-lab \
   --group-name lab04-fargate-sg \
@@ -638,15 +792,18 @@ export SECURITY_GROUP_ID=$(aws ec2 create-security-group \
 
 Verificar:
 
-```
+```bash
 echo "${SECURITY_GROUP_ID}"
+
+# Response example,
+sg-0a40eaa04f6626846
 ```
 
 ## 17. Permitir HTTP
 
 La opción más simple para un laboratorio temporal es:
 
-```
+```bash
 aws ec2 authorize-security-group-ingress \
   --profile aws-lab \
   --group-id "${SECURITY_GROUP_ID}" \
@@ -655,6 +812,30 @@ aws ec2 authorize-security-group-ingress \
   --cidr 0.0.0.0/0 \
   --region "${AWS_REGION}"
 ```
+
+y su respuesta,
+
+````json
+{
+    "Return": true,
+    "SecurityGroupRules": [
+        {
+            "SecurityGroupRuleId": "sgr-0a9611c193a040da2",
+            "GroupId": "sg-0a40eaa04f6626846",
+            "GroupOwnerId": "565866186032",
+            "IsEgress": false,
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIpv4": "0.0.0.0/0",
+            "SecurityGroupRuleArn": "arn:aws:ec2:us-east-1:565866186032:security-group-rule/sgr-0a9611c193a040da2"
+        }
+    ]
+}
+
+````
+
+
 
 Esto expone temporalmente el puerto:
 
@@ -676,25 +857,27 @@ en lugar de:
 0.0.0.0/0
 ```
 
+
+
 ## 18. Nota de seguridad
 
-La apertura:
+> [!warning]
+>
+> La apertura:
+>
+> ```
+> 0.0.0.0/0 → TCP 80
+> ```
+>
+> se utiliza únicamente para simplificar este laboratorio. No debe interpretarse como una recomendación general para workloads productivos. El Security Group será eliminado durante el teardown.
 
-```
-0.0.0.0/0 → TCP 80
-```
 
-se utiliza únicamente para simplificar este laboratorio.
-
-No debe interpretarse como una recomendación general para workloads productivos.
-
-El Security Group será eliminado durante el teardown.
 
 ## 19. Verificar Security Group
 
 Ejecutar:
 
-```
+```bash
 aws ec2 describe-security-groups \
   --profile aws-lab \
   --group-ids "${SECURITY_GROUP_ID}" \
@@ -702,6 +885,32 @@ aws ec2 describe-security-groups \
   --query 'SecurityGroups[0].[GroupId,GroupName,IpPermissions]' \
   --output json
 ```
+
+Con la respuesta de,
+
+````json
+[
+    "sg-0a40eaa04f6626846",
+    "lab04-fargate-sg",
+    [
+        {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "UserIdGroupPairs": [],
+            "IpRanges": [
+                {
+                    "CidrIp": "0.0.0.0/0"
+                }
+            ],
+            "Ipv6Ranges": [],
+            "PrefixListIds": []
+        }
+    ]
+]
+````
+
+
 
 ## 20. Checkpoint 3 — Networking
 
@@ -725,13 +934,13 @@ Checkpoint 3: PASS
 
 Crear:
 
-```
+```bash
 task-definition.json
 ```
 
 Contenido:
 
-```
+```json
 {
   "family": "lab04-docusaurus",
   "networkMode": "awsvpc",
@@ -784,6 +993,8 @@ por:
 ```
 echo "${IMAGE_URI}"
 ```
+
+
 
 ## 22. Recursos utilizados
 
@@ -842,7 +1053,7 @@ LINUX / X86_64
 
 Ejecutar:
 
-```
+```bash
 aws ecs register-task-definition \
   --profile aws-lab \
   --cli-input-json file://task-definition.json \
@@ -851,7 +1062,7 @@ aws ecs register-task-definition \
 
 Consultar:
 
-```
+```bash
 aws ecs describe-task-definition \
   --profile aws-lab \
   --task-definition "${TASK_FAMILY}" \
@@ -862,14 +1073,20 @@ aws ecs describe-task-definition \
 
 Esperamos:
 
+```markdown
+------------------------
+|DescribeTaskDefinition|
++----------------------+
+|  lab04-docusaurus    |
+|  1                   |
+|  256                 |
+|  512                 |
+|  awsvpc              |
+|  FARGATE             |
++----------------------+
 ```
-lab04-docusaurus
-1
-256
-512
-awsvpc
-FARGATE
-```
+
+
 
 ## 25. Entender Task Definition
 
@@ -936,7 +1153,7 @@ desired-count = 1
 
 Ejecutar:
 
-```
+```bash
 aws ecs create-service \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -948,6 +1165,8 @@ aws ecs create-service \
   --network-configuration "awsvpcConfiguration={subnets=[${SUBNET_ID}],securityGroups=[${SECURITY_GROUP_ID}],assignPublicIp=ENABLED}" \
   --region "${AWS_REGION}"
 ```
+
+
 
 ## 28. Qué hará ECS
 
@@ -983,11 +1202,13 @@ desiredCount = 1
 
 Esta es una diferencia importante respecto a ejecutar manualmente un único container.
 
+
+
 ## 29. Esperar estabilidad
 
 Ejecutar:
 
-```
+```bash
 aws ecs wait services-stable \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -997,7 +1218,7 @@ aws ecs wait services-stable \
 
 Cuando termine, consultar:
 
-```
+```bash
 aws ecs describe-services \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1016,7 +1237,21 @@ ACTIVE
 0
 ```
 
-30. Checkpoint 5 — ECS Service
+También puede consultarse los eventos para verificar el estado.
+
+````bash
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].events[0:5].[createdAt,message]' \
+  --output table
+````
+
+
+
+## 30. Checkpoint 5 — ECS Service
 
 ```
 [ ] ECS Service creado
@@ -1038,7 +1273,7 @@ Checkpoint 5: PASS
 
 Ejecutar:
 
-```
+```bash
 export TASK_ARN=$(aws ecs list-tasks \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1051,7 +1286,7 @@ export TASK_ARN=$(aws ecs list-tasks \
 
 Verificar:
 
-```
+```bash
 echo "${TASK_ARN}"
 ```
 
@@ -1059,7 +1294,7 @@ echo "${TASK_ARN}"
 
 Ejecutar:
 
-```
+```bash
 aws ecs describe-tasks \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1069,7 +1304,7 @@ aws ecs describe-tasks \
 
 Podemos obtener información compacta:
 
-```
+```bash
 aws ecs describe-tasks \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1081,13 +1316,17 @@ aws ecs describe-tasks \
 
 Esperamos:
 
-```
-RUNNING
-RUNNING
-FARGATE
-...
-256
-512
+```markdown
+---------------
+|DescribeTasks|
++-------------+
+|  RUNNING    |
+|  RUNNING    |
+|  FARGATE    |
+|  1.4.0      |
+|  256        |
+|  512        |
++-------------+
 ```
 
 ## 33. Obtener la ENI de la Task
@@ -1096,7 +1335,7 @@ Con `awsvpc`, cada Fargate Task dispone de una Elastic Network Interface.
 
 Obtener:
 
-```
+```bash
 export ENI_ID=$(aws ecs describe-tasks \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1108,7 +1347,7 @@ export ENI_ID=$(aws ecs describe-tasks \
 
 Verificar:
 
-```
+```bash
 echo "${ENI_ID}"
 ```
 
@@ -1116,7 +1355,7 @@ echo "${ENI_ID}"
 
 Ejecutar:
 
-```
+```bash
 export PUBLIC_IP=$(aws ec2 describe-network-interfaces \
   --profile aws-lab \
   --network-interface-ids "${ENI_ID}" \
@@ -1127,7 +1366,7 @@ export PUBLIC_IP=$(aws ec2 describe-network-interfaces \
 
 Verificar:
 
-```
+```bash
 echo "${PUBLIC_IP}"
 ```
 
@@ -1150,21 +1389,31 @@ Container :80
 
 Ejecutar:
 
-```
+```bash
 curl -I "http://${PUBLIC_IP}"
 ```
 
 Esperamos:
 
-```
+```markdown
 HTTP/1.1 200 OK
-Server: nginx
+Server: nginx/1.30.5
+Date: Sun, 11 Oct 2026 00:44:59 GMT
+Content-Type: text/html
+Content-Length: 69806
+Last-Modified: Sat, 10 Oct 2026 23:32:23 GMT
+Connection: keep-alive
+ETag: "6acacb07-110ae"
+Accept-Ranges: bytes
 ```
 
 También podemos abrir:
 
-```
+```bash
 http://<PUBLIC_IP>
+
+# Es decir y abrir en el browser,
+echo "http://${PUBLIC_IP}"
 ```
 
 en el navegador.
@@ -1180,7 +1429,7 @@ Lab 04
 
 Reutilizando el aprendizaje de M2:
 
-```
+```bash
 curl -I -L \
   "http://${PUBLIC_IP}/docs/m1-docusaurus-bootstrap"
 ```
@@ -1230,7 +1479,7 @@ Running Task
 
 Ejecutar:
 
-```
+```bash
 aws ecs describe-tasks \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1242,27 +1491,30 @@ aws ecs describe-tasks \
 
 Esperamos encontrar:
 
+```markdown
+-----------------------------------------------------------------------------
+|                               DescribeTasks                               |
++---------------------------------------------------------------------------+
+|  lab04-docusaurus                                                         |
+|  565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus:m3-v1      |
+|  sha256:2cf6092a4d4bacb046667a418511119752a904523c1c4e404ef1e1b6e1c40fa0  |
+|  RUNNING                                                                  |
++---------------------------------------------------------------------------+
 ```
-lab04-docusaurus
 
-<ACCOUNT>.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus:m3-v1
 
-sha256:...
-
-RUNNING
-```
 
 ## 39. Comparar digests
 
 Mostrar digest esperado:
 
-```
+```bash
 echo "${EXPECTED_IMAGE_DIGEST}"
 ```
 
 Obtener digest ejecutado:
 
-```
+```bash
 export RUNNING_IMAGE_DIGEST=$(aws ecs describe-tasks \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1274,13 +1526,13 @@ export RUNNING_IMAGE_DIGEST=$(aws ecs describe-tasks \
 
 Mostrar:
 
-```
+```bash
 echo "${RUNNING_IMAGE_DIGEST}"
 ```
 
 Comparar:
 
-```
+```bash
 if [ "${EXPECTED_IMAGE_DIGEST}" = "${RUNNING_IMAGE_DIGEST}" ]; then
   echo "PASS: Running task matches ECR image digest"
 else
@@ -1290,7 +1542,7 @@ fi
 
 Resultado esperado:
 
-```
+```bash
 PASS: Running task matches ECR image digest
 ```
 
@@ -1342,7 +1594,7 @@ Aunque CloudWatch llegará en M5, ECS ya proporciona eventos operativos.
 
 Consultar:
 
-```
+```bash
 aws ecs describe-services \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1355,10 +1607,14 @@ aws ecs describe-services \
 Podemos encontrar eventos relacionados con:
 
 ```
-Task started
-Service reached steady state
-Task replacement
-Deployment
+--------------------------------------------------------------------------------------------------------------------------------
+|                                                       DescribeServices                                                       |
++-----------------------------------+------------------------------------------------------------------------------------------+
+|  2026-10-10T17:37:30.185000-07:00 |  (service lab04-service) has reached a steady state.                                     |
+|  2026-10-10T17:37:30.184000-07:00 |  (service lab04-service) (deployment ecs-svc/2343205646774159021) deployment completed.  |
+|  2026-10-10T17:37:11.848000-07:00 |  (service lab04-service) has started 1 tasks: (task 98f30749333a467cb3034e0360bfe0fb).   |
++-----------------------------------+------------------------------------------------------------------------------------------+
+
 ```
 
 Estos mensajes serán muy útiles durante M5.
@@ -1470,7 +1726,7 @@ Network access
 
 Primero:
 
-```
+```bash
 aws ecr describe-images \
   --profile aws-lab \
   --repository-name "${ECR_REPOSITORY}" \
@@ -1480,7 +1736,7 @@ aws ecr describe-images \
 
 Después comprobar:
 
-```
+```bash
 aws iam list-attached-role-policies \
   --profile aws-lab \
   --role-name ecsTaskExecutionRole
@@ -1517,7 +1773,7 @@ X86_64
 
 Verificar ECR:
 
-```
+```bash
 docker image inspect \
   "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
   --format '{{.Os}}/{{.Architecture}}'
@@ -1551,7 +1807,7 @@ NGINX running
 
 Verificar Security Group:
 
-```
+```bash
 aws ec2 describe-security-groups \
   --profile aws-lab \
   --group-ids "${SECURITY_GROUP_ID}" \
@@ -1562,7 +1818,7 @@ aws ec2 describe-security-groups \
 
 Consultar:
 
-```
+```bash
 aws ecs describe-services \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1829,7 +2085,7 @@ A diferencia de ECR por sí solo, una Fargate Task ejecutándose consume recurso
 
 Por ello, si se realiza una pausa prolongada antes de M5, podemos reducir temporalmente el servicio:
 
-```
+```bash
 aws ecs update-service \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1842,7 +2098,7 @@ Esto detendrá las Tasks administradas por el Service.
 
 Cuando continuemos:
 
-```
+```bash
 aws ecs update-service \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
@@ -1853,13 +2109,15 @@ aws ecs update-service \
 
 Esperar:
 
-```
+```bash
 aws ecs wait services-stable \
   --profile aws-lab \
   --cluster "${ECS_CLUSTER}" \
   --services "${ECS_SERVICE}" \
   --region "${AWS_REGION}"
 ```
+
+
 
 ## 55. Commit del milestone
 
@@ -1873,13 +2131,13 @@ M4 documentation
 
 Revisar:
 
-```
+```bash
 git status
 ```
 
 Agregar:
 
-```
+```bash
 git add .
 ```
 
@@ -1894,6 +2152,8 @@ Publicar:
 ```
 git push
 ```
+
+
 
 ## 56. Preparación para M5
 
