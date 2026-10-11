@@ -2119,6 +2119,36 @@ aws ecs wait services-stable \
 
 
 
+Para comprobar el estado de nuestras tareas, ejecutamos,
+
+````bash 
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].[status,desiredCount,runningCount,pendingCount]' \
+  --output table
+````
+
+Si no hay nada corriendo, deberiamos ver algo asi,
+
+````markdown
+------------------
+|DescribeServices|
++----------------+
+|  ACTIVE        |
+|  0             |
+|  0             |
+|  0             |
++----------------+
+
+````
+
+
+
+
+
 ## 55. Commit del milestone
 
 Registrar los archivos creados para M4, especialmente:
@@ -2192,6 +2222,8 @@ Fargate Task
        Amazon CloudWatch
 ```
 
+
+
 También introduciremos deliberadamente uno o más fallos para practicar:
 
 ```
@@ -2206,6 +2238,8 @@ Correct
    ▼
 Verify
 ```
+
+
 
 ## Criterio de salida
 

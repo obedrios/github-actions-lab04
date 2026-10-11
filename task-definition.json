@@ -14,7 +14,7 @@
   "containerDefinitions": [
     {
       "name": "lab04-docusaurus",
-      "image": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus:m3-v1",
+      "image": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-docusaurus:m3-v2",
       "essential": true,
       "portMappings": [
         {
