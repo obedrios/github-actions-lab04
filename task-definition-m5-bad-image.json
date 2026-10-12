@@ -1,0 +1,35 @@
+{
+  "family": "lab04-diagnostic-bad-image",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::565866186032:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "lab04-diagnostic",
+      "image": "565866186032.dkr.ecr.us-east-1.amazonaws.com/lab04-diagnostic:does-not-exist",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/lab04-docusaurus",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "diagnostic"
+        }
+      }
+    }
+  ]
+}

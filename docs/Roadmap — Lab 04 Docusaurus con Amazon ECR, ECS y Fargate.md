@@ -118,9 +118,9 @@ Durante todo el Lab 04 conservaremos los siguientes principios:
 | --------- | ----------------------- | ------------------------------------------------------- | ----------- |
 | **M1**    | Bootstrap de Docusaurus | Crear desde cero la aplicación base                     | Completado  |
 | **M2**    | Docker + NGINX          | Containerizar y validar la aplicación localmente        | Completado  |
-| **M3**    | Amazon ECR              | Publicar y validar la imagen OCI en un registry privado | En progreso |
-| **M4**    | ECS + Fargate           | Ejecutar manualmente la aplicación en AWS               | Pendiente   |
-| **M5**    | Observabilidad          | Incorporar logs, health y troubleshooting               | Pendiente   |
+| **M3**    | Amazon ECR              | Publicar y validar la imagen OCI en un registry privado | Completado  |
+| **M4**    | ECS + Fargate           | Ejecutar manualmente la aplicación en AWS               | Completado  |
+| **M5**    | Observabilidad          | Incorporar logs, health y troubleshooting               | En Progreso |
 | **M6**    | GitHub Actions + OIDC   | Automatizar build, push y deployment                    | Pendiente   |
 | **M7**    | Rollback                | Simular un fallo y recuperar el servicio                | Pendiente   |
 | **M8**    | Cierre y teardown       | Consolidar evidencia y eliminar recursos                | Pendiente   |

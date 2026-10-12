@@ -2255,8 +2255,6 @@ M4 STATUS: PASS
 
 # Notes
 
-
-
 Para una pausa, **no necesitas destruir M4**. Lo más limpio es “apagar” el cómputo de Fargate dejando el ECS Service en `desiredCount = 0`.
 
 Ejecuta:
@@ -2315,7 +2313,7 @@ El cluster, las definiciones y el service pueden permanecer como configuración.
 
 Además, como no creamos todavía un ALB en M4, no tenemos que preocuparnos por un Load Balancer permaneciendo aprovisionado durante la noche. Eso es una ventaja de la arquitectura simple que usamos en este milestone.
 
-Mañana reanudas simplemente con:
+Despuede una pausa reanudas simplemente con:
 
 ```bash
 aws ecs update-service \
@@ -2350,11 +2348,15 @@ aws ecs describe-services \
 
 esperando:
 
-```
-ACTIVE
-1
-1
-0
+```markdown
+------------------
+|DescribeServices|
++----------------+
+|  ACTIVE        |
+|  1             |
+|  1             |
+|  0             |
++----------------+
 ```
 
 Hay un detalle importante: al arrancar una **nueva Fargate Task**, recibirá una nueva ENI y probablemente una nueva public IP. Por eso mañana tendrás que repetir la parte de M4 donde obtuvimos:
