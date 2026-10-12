@@ -1857,17 +1857,21 @@ jobs:
 
 
 
-````bash
-export AWS_ROLE_ARN=$(aws iam get-role \
-  --profile aws-lab \
-  --role-name lab04-github-actions-deploy-role \
-  --query 'Role.Arn' \
-  --output text)
-  
-echo "${AWS_ROLE_ARN}"
-````
-
-
+> [!note]
+>
+> Para nuestro caso es necesario en Github, en el environment de development, definir esta variable de ambiente `AWS_ROLE_ARN`, el valor se puede obtener de,
+>
+> ````yaml
+> export AWS_ROLE_ARN=$(aws iam get-role \
+>   --profile aws-lab \
+>   --role-name lab04-github-actions-deploy-role \
+>   --query 'Role.Arn' \
+>   --output text)
+>   
+> echo "${AWS_ROLE_ARN}"
+> ````
+>
+> 
 
 
 
