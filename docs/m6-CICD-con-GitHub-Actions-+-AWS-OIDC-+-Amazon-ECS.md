@@ -1875,6 +1875,12 @@ jobs:
 
 
 
+> [!note]
+>
+>  El campo `image` de `task-definition.json` contiene una imagen base válida, pero durante el pipeline de GitHub Actions este valor es reemplazado dinámicamente por la imagen generada para el commit actual.
+
+
+
 ## 36. Estructura del workflow
 
 Tenemos dos jobs:
