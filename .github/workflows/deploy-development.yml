@@ -16,14 +16,10 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-
   ECR_REPOSITORY: lab04-docusaurus
-
   ECS_CLUSTER: lab04-cluster
   ECS_SERVICE: lab04-service
-
   ECS_TASK_DEFINITION: task-definition.json
-
   CONTAINER_NAME: lab04-docusaurus
 
 jobs:

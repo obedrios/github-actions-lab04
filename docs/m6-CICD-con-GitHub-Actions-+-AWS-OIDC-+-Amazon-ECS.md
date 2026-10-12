@@ -1429,7 +1429,7 @@ mkdir -p .github/workflows
 
 Crear:
 
-```text
+```bash
 .github/workflows/deploy-development.yml
 ```
 
@@ -1513,6 +1513,74 @@ jobs:
         uses: actions/checkout@v4
 
 
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Validating deployment configuration..."
+
+          if [ -z "${AWS_REGION}" ]; then
+            echo "ERROR: AWS_REGION is empty"
+            exit 1
+          fi
+
+          if [ -z "${ECR_REPOSITORY}" ]; then
+            echo "ERROR: ECR_REPOSITORY is empty"
+            exit 1
+          fi
+
+          if [ -z "${ECS_CLUSTER}" ]; then
+            echo "ERROR: ECS_CLUSTER is empty"
+            exit 1
+          fi
+
+          if [ -z "${ECS_SERVICE}" ]; then
+            echo "ERROR: ECS_SERVICE is empty"
+            exit 1
+          fi
+
+          if [ -z "${ECS_TASK_DEFINITION}" ]; then
+            echo "ERROR: ECS_TASK_DEFINITION is empty"
+            exit 1
+          fi
+
+          if [ -z "${CONTAINER_NAME}" ]; then
+            echo "ERROR: CONTAINER_NAME is empty"
+            exit 1
+          fi
+
+          if [ -z "${{ vars.AWS_ROLE_ARN }}" ]; then
+            echo "ERROR: AWS_ROLE_ARN is empty"
+            echo "Check:"
+            echo "Repository -> Settings -> Environments -> development"
+            echo "Environment variables -> AWS_ROLE_ARN"
+            exit 1
+          fi
+
+          echo "PASS: AWS_REGION is configured"
+          echo "PASS: ECR_REPOSITORY is configured"
+          echo "PASS: ECS_CLUSTER is configured"
+          echo "PASS: ECS_SERVICE is configured"
+          echo "PASS: ECS_TASK_DEFINITION is configured"
+          echo "PASS: CONTAINER_NAME is configured"
+          echo "PASS: AWS_ROLE_ARN is configured"
+          echo "PASS: GitHub Environment = development"
+
+
+      - name: Show OIDC context
+        shell: bash
+        run: |
+          echo "GitHub repository: ${GITHUB_REPOSITORY}"
+          echo "GitHub ref: ${GITHUB_REF}"
+          echo "GitHub SHA: ${GITHUB_SHA}"
+          echo "GitHub actor: ${GITHUB_ACTOR}"
+          echo "GitHub workflow: ${GITHUB_WORKFLOW}"
+          echo "GitHub run number: ${GITHUB_RUN_NUMBER}"
+          echo "GitHub run attempt: ${GITHUB_RUN_ATTEMPT}"
+          echo "Deployment environment: development"
+
+
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
@@ -1522,7 +1590,11 @@ jobs:
 
 
       - name: Verify AWS identity
+        shell: bash
         run: |
+          set -euo pipefail
+
+          echo "AWS identity obtained through OIDC:"
           aws sts get-caller-identity
 
 
@@ -1539,6 +1611,8 @@ jobs:
         id: image
         shell: bash
         run: |
+          set -euo pipefail
+
           SHORT_SHA="${GITHUB_SHA::12}"
 
           IMAGE_TAG="sha-${SHORT_SHA}-run-${GITHUB_RUN_NUMBER}-attempt-${GITHUB_RUN_ATTEMPT}"
@@ -1553,7 +1627,10 @@ jobs:
 
 
       - name: Build and push Docker image
+        shell: bash
         run: |
+          set -euo pipefail
+
           docker buildx build \
             --platform linux/amd64 \
             --provenance=false \
@@ -1567,12 +1644,19 @@ jobs:
         id: ecr-image
         shell: bash
         run: |
+          set -euo pipefail
+
           IMAGE_DIGEST=$(aws ecr describe-images \
             --repository-name "${ECR_REPOSITORY}" \
             --image-ids imageTag="${{ steps.image.outputs.tag }}" \
             --region "${AWS_REGION}" \
             --query 'imageDetails[0].imageDigest' \
             --output text)
+
+          if [ -z "${IMAGE_DIGEST}" ] || [ "${IMAGE_DIGEST}" = "None" ]; then
+            echo "ERROR: ECR image digest could not be resolved"
+            exit 1
+          fi
 
           echo "digest=${IMAGE_DIGEST}" >> "${GITHUB_OUTPUT}"
 
@@ -1600,7 +1684,10 @@ jobs:
 
 
       - name: Inspect ECS service
+        shell: bash
         run: |
+          set -euo pipefail
+
           aws ecs describe-services \
             --cluster "${ECS_CLUSTER}" \
             --services "${ECS_SERVICE}" \
@@ -1613,6 +1700,8 @@ jobs:
         id: running-task
         shell: bash
         run: |
+          set -euo pipefail
+
           TASK_ARN=$(aws ecs list-tasks \
             --cluster "${ECS_CLUSTER}" \
             --service-name "${ECS_SERVICE}" \
@@ -1635,6 +1724,8 @@ jobs:
         id: running-image
         shell: bash
         run: |
+          set -euo pipefail
+
           RUNNING_IMAGE=$(aws ecs describe-tasks \
             --cluster "${ECS_CLUSTER}" \
             --tasks "${{ steps.running-task.outputs.task-arn }}" \
@@ -1649,6 +1740,11 @@ jobs:
             --query 'tasks[0].containers[0].imageDigest' \
             --output text)
 
+          if [ -z "${RUNNING_DIGEST}" ] || [ "${RUNNING_DIGEST}" = "None" ]; then
+            echo "ERROR: Running image digest could not be resolved"
+            exit 1
+          fi
+
           echo "RUNNING_IMAGE=${RUNNING_IMAGE}"
           echo "RUNNING_DIGEST=${RUNNING_DIGEST}"
 
@@ -1659,6 +1755,8 @@ jobs:
       - name: Verify digest traceability
         shell: bash
         run: |
+          set -euo pipefail
+
           EXPECTED_DIGEST="${{ steps.ecr-image.outputs.digest }}"
           RUNNING_DIGEST="${{ steps.running-image.outputs.digest }}"
 
@@ -1680,6 +1778,8 @@ jobs:
         id: network
         shell: bash
         run: |
+          set -euo pipefail
+
           TASK_ARN="${{ steps.running-task.outputs.task-arn }}"
 
           ENI_ID=$(aws ecs describe-tasks \
@@ -1689,11 +1789,21 @@ jobs:
             --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" \
             --output text)
 
+          if [ -z "${ENI_ID}" ] || [ "${ENI_ID}" = "None" ]; then
+            echo "ERROR: ENI could not be resolved"
+            exit 1
+          fi
+
           PUBLIC_IP=$(aws ec2 describe-network-interfaces \
             --network-interface-ids "${ENI_ID}" \
             --region "${AWS_REGION}" \
             --query 'NetworkInterfaces[0].Association.PublicIp' \
             --output text)
+
+          if [ -z "${PUBLIC_IP}" ] || [ "${PUBLIC_IP}" = "None" ]; then
+            echo "ERROR: Public IP could not be resolved"
+            exit 1
+          fi
 
           echo "ENI_ID=${ENI_ID}"
           echo "PUBLIC_IP=${PUBLIC_IP}"
@@ -1705,12 +1815,9 @@ jobs:
       - name: HTTP smoke test
         shell: bash
         run: |
-          PUBLIC_IP="${{ steps.network.outputs.public-ip }}"
+          set -euo pipefail
 
-          if [ -z "${PUBLIC_IP}" ] || [ "${PUBLIC_IP}" = "None" ]; then
-            echo "ERROR: No Public IP found"
-            exit 1
-          fi
+          PUBLIC_IP="${{ steps.network.outputs.public-ip }}"
 
           echo "Testing http://${PUBLIC_IP}"
 
@@ -1728,6 +1835,7 @@ jobs:
 
 
       - name: Deployment summary
+        if: success()
         shell: bash
         run: |
           {
@@ -1747,7 +1855,21 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 ```
 
----
+
+
+````bash
+export AWS_ROLE_ARN=$(aws iam get-role \
+  --profile aws-lab \
+  --role-name lab04-github-actions-deploy-role \
+  --query 'Role.Arn' \
+  --output text)
+  
+echo "${AWS_ROLE_ARN}"
+````
+
+
+
+
 
 ## 36. Estructura del workflow
 
