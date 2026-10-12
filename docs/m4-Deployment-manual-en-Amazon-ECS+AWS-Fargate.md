@@ -2250,3 +2250,264 @@ M4 puede considerarse cerrado cuando:
 ```
 M4 STATUS: PASS
 ```
+
+
+
+# Notes
+
+
+
+Para una pausa, **no necesitas destruir M4**. Lo más limpio es “apagar” el cómputo de Fargate dejando el ECS Service en `desiredCount = 0`.
+
+Ejecuta:
+
+```bash
+aws ecs update-service \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --service "${ECS_SERVICE}" \
+  --desired-count 0 \
+  --region "${AWS_REGION}"
+```
+
+ECS reducirá el número deseado de tasks a cero; al no quedar Fargate Tasks ejecutándose, dejas de consumir el cómputo de esas tasks. AWS define `desiredCount` justamente como el número de instancias de la task que el servicio debe mantener, y permite reducirlo a cero. [AWS Documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service_definition_parameters.html?utm_source=chatgpt.com)
+
+Después puedes comprobarlo con:
+
+```bash
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].[status,desiredCount,runningCount,pendingCount]' \
+  --output table
+```
+
+Quieres llegar a algo equivalente a:
+
+```markdown
+------------------
+|DescribeServices|
++----------------+
+|  ACTIVE        |
+|  0             |
+|  0             |
+|  0             |
++----------------+
+
+```
+
+Yo **conservaría** estos recursos hasta la siguiente practica despues de la pausa:
+
+```
+ECS Cluster
+ECS Service
+Task Definitions
+Amazon ECR repository
+m3-v1 / imágenes posteriores
+Security Group
+IAM Execution Role
+VPC / default subnet
+```
+
+El cluster, las definiciones y el service pueden permanecer como configuración. ECR sí puede seguir teniendo un pequeño costo por almacenamiento de imágenes, pero para un laboratorio con una o pocas imágenes suele ser mucho más razonable conservarlo que desmontar y reconstruir todo. El componente que más nos interesa detener durante la pausa es la **Fargate Task**.
+
+Además, como no creamos todavía un ALB en M4, no tenemos que preocuparnos por un Load Balancer permaneciendo aprovisionado durante la noche. Eso es una ventaja de la arquitectura simple que usamos en este milestone.
+
+Mañana reanudas simplemente con:
+
+```bash
+aws ecs update-service \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --service "${ECS_SERVICE}" \
+  --desired-count 1 \
+  --region "${AWS_REGION}"
+```
+
+Luego:
+
+```bash
+aws ecs wait services-stable \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}"
+```
+
+y compruebas:
+
+```bash
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].[status,desiredCount,runningCount,pendingCount]' \
+  --output table
+```
+
+esperando:
+
+```
+ACTIVE
+1
+1
+0
+```
+
+Hay un detalle importante: al arrancar una **nueva Fargate Task**, recibirá una nueva ENI y probablemente una nueva public IP. Por eso mañana tendrás que repetir la parte de M4 donde obtuvimos:
+
+```
+Task ARN
+   ↓
+ENI
+   ↓
+Public IP
+```
+
+No confíes en la IP que tenías hoy.
+
+Así que **sí se puede “pausar” de forma práctica**: no pausamos el cluster como una VM, sino que escalamos el servicio a cero. Es exactamente lo que yo haría antes de dejar el laboratorio por hoy.
+
+Después de volver a levantar el servicio con `desired-count 1`, puedes recuperar **Task ARN → ENI → Public IP** en ese orden.
+
+Primero asegúrate de que el servicio esté estable:
+
+```bash
+aws ecs wait services-stable \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}"
+```
+
+Luego obtén la Task ARN activa:
+
+```bash
+export TASK_ARN=$(aws ecs list-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --service-name "${ECS_SERVICE}" \
+  --desired-status RUNNING \
+  --region "${AWS_REGION}" \
+  --query 'taskArns[0]' \
+  --output text)
+```
+
+Verifica:
+
+```bash
+echo "${TASK_ARN}"
+```
+
+Deberías obtener algo similar a:
+
+```bash
+arn:aws:ecs:us-east-1:123456789012:task/lab04-cluster/xxxxxxxx
+```
+
+Ahora, a partir de esa Task, obtén la ENI:
+
+```bash
+export ENI_ID=$(aws ecs describe-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --tasks "${TASK_ARN}" \
+  --region "${AWS_REGION}" \
+  --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" \
+  --output text)
+```
+
+Verifica:
+
+```bash
+echo "${ENI_ID}"
+```
+
+Esperas algo como:
+
+```bash
+eni-0123456789abcdef0
+```
+
+Después usa la ENI para recuperar la Public IP:
+
+```bash
+export PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+  --profile aws-lab \
+  --network-interface-ids "${ENI_ID}" \
+  --region "${AWS_REGION}" \
+  --query 'NetworkInterfaces[0].Association.PublicIp' \
+  --output text)
+```
+
+Verifica:
+
+```bash
+echo "${PUBLIC_IP}"
+```
+
+Y finalmente prueba la aplicación:
+
+```bash
+curl -I "http://${PUBLIC_IP}"
+```
+
+Esperamos:
+
+```bash
+HTTP/1.1 200 OK
+Server: nginx
+```
+
+El flujo completo queda así:
+
+```bash
+ECS Service
+    ↓
+Running Task
+    ↓
+Task ARN
+    ↓
+ENI
+    ↓
+Public IP
+    ↓
+HTTP
+```
+
+Si quieres hacerlo de forma compacta, puedes ejecutar todo junto:
+
+```bash
+export TASK_ARN=$(aws ecs list-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --service-name "${ECS_SERVICE}" \
+  --desired-status RUNNING \
+  --region "${AWS_REGION}" \
+  --query 'taskArns[0]' \
+  --output text)
+
+export ENI_ID=$(aws ecs describe-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --tasks "${TASK_ARN}" \
+  --region "${AWS_REGION}" \
+  --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" \
+  --output text)
+
+export PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+  --profile aws-lab \
+  --network-interface-ids "${ENI_ID}" \
+  --region "${AWS_REGION}" \
+  --query 'NetworkInterfaces[0].Association.PublicIp' \
+  --output text)
+
+echo "TASK_ARN=${TASK_ARN}"
+echo "ENI_ID=${ENI_ID}"
+echo "PUBLIC_IP=${PUBLIC_IP}"
+```
+
+Eso te deja listo para continuar con M5.
