@@ -484,7 +484,6 @@ Verificar:
 ```bash
 echo "OWNER=${GITHUB_OWNER}"
 echo "OWNER_ID=${GITHUB_OWNER_ID}"
-
 echo "REPOSITORY=${GITHUB_REPOSITORY_NAME}"
 echo "REPOSITORY_ID=${GITHUB_REPOSITORY_ID}"
 ```
@@ -579,15 +578,46 @@ aws iam get-open-id-connect-provider \
   --open-id-connect-provider-arn "${GITHUB_OIDC_PROVIDER_ARN}"
 ```
 
-Si funciona:
+Si funciona se obtiene un resultado como:
 
-```text
-OIDC Provider already exists
+```json
+{
+    "Url": "token.actions.githubusercontent.com",
+    "ClientIDList": [
+        "sts.amazonaws.com"
+    ],
+    "ThumbprintList": [
+        "ab9d0263244dd0326eb67015705a667e79cfe998"
+    ],
+    "CreateDate": "2026-09-24T19:36:00.280000+00:00",
+    "Tags": []
+}
+
 ```
 
-No debemos crear otro.
+Lo importante de la salida es esto:
 
-Esto es común si ya realizamos anteriormente otros laboratorios con GitHub Actions + AWS OIDC.
+```
+"Url": "token.actions.githubusercontent.com"
+```
+
+Eso confirma que el provider corresponde a GitHub Actions OIDC. Y esto:
+
+```
+"ClientIDList": [
+    "sts.amazonaws.com"
+]
+```
+
+confirma que el audience esperado por AWS STS está configurado correctamente.
+
+El `ThumbprintList` también es normal como parte de la configuración del OIDC provider; no necesitas cambiarlo para este laboratorio.
+
+Además, por la `CreateDate`, ese provider ya existía de un ejercicio anterior, así que hiciste bien en **reutilizarlo** en lugar de intentar crear otro.
+
+No debemos crear otro. Esto es común si ya realizamos anteriormente otros laboratorios con GitHub Actions + AWS OIDC.
+
+En consecuencia, puedes saltarte el punto 12 de “crear OIDC Provider” y continuar directamente con la trust policy del role de GitHub Actions.
 
 ---
 
@@ -717,13 +747,13 @@ El archivo final tendrá una estructura equivalente a:
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+        "Federated": "arn:aws:iam::565866186032:oidc-provider/token.actions.githubusercontent.com"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:OWNER@OWNER_ID/REPOSITORY@REPOSITORY_ID:environment:development"
+          "token.actions.githubusercontent.com:sub": "repo:obedrios@1650531/github-actions-lab04@1402439686:environment:development"
         }
       }
     }
@@ -752,9 +782,40 @@ Si ya existe:
 EntityAlreadyExists
 ```
 
-no eliminarlo automáticamente.
+no eliminarlo automáticamente. De lo contrario, generará una respuesta como la siguiente,
 
-Consultar:
+````json
+{
+    "Role": {
+        "Path": "/",
+        "RoleName": "lab04-github-actions-deploy-role",
+        "RoleId": "AROAYHQCAYUYIK75N4NWA",
+        "Arn": "arn:aws:iam::565866186032:role/lab04-github-actions-deploy-role"
+,
+        "CreateDate": "2026-10-12T02:25:44+00:00",
+        "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Federated": "arn:aws:iam::565866186032:oidc-provider/token.actions.githubusercontent.com"
+                    },
+                    "Action": "sts:AssumeRoleWithWebIdentity",
+                    "Condition": {
+                        "StringEquals": {
+                            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                            "token.actions.githubusercontent.com:sub": "repo:obedrios@1650531/github-actions-lab04@1402439686:environment:development"
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
+````
+
+Consultar con:
 
 ```bash
 aws iam get-role \
@@ -762,7 +823,7 @@ aws iam get-role \
   --role-name "${GITHUB_ACTIONS_ROLE_NAME}"
 ```
 
----
+se obtiene una salida como la anterior.
 
 ## 17. Obtener ARN del deployment role
 
@@ -1012,8 +1073,14 @@ aws iam list-role-policies \
 
 Esperamos:
 
-```text
-Lab04GitHubActionsDeployPolicy
+```markdown
+--------------------------------------
+|          ListRolePolicies          |
++------------------------------------+
+||            PolicyNames           ||
+|+----------------------------------+|
+||  Lab04GitHubActionsDeployPolicy  ||
+|+----------------------------------+|
 ```
 
 ---

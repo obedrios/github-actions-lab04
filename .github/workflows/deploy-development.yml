@@ -1,0 +1,305 @@
+name: Deploy Lab04 to ECS
+
+on:
+  push:
+    branches:
+      - development
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab04-ecs-development
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+
+  ECR_REPOSITORY: lab04-docusaurus
+
+  ECS_CLUSTER: lab04-cluster
+  ECS_SERVICE: lab04-service
+
+  ECS_TASK_DEFINITION: task-definition.json
+
+  CONTAINER_NAME: lab04-docusaurus
+
+jobs:
+
+  validate:
+    name: Validate application
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Docusaurus
+        run: npm run build
+
+
+  deploy:
+    name: Build image and deploy to ECS
+
+    needs:
+      - validate
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: development
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: lab04-github-actions
+
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+
+      - name: Define image metadata
+        id: image
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::12}"
+
+          IMAGE_TAG="sha-${SHORT_SHA}-run-${GITHUB_RUN_NUMBER}-attempt-${GITHUB_RUN_ATTEMPT}"
+
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          echo "tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "uri=${IMAGE_URI}" >> "${GITHUB_OUTPUT}"
+
+          echo "IMAGE_TAG=${IMAGE_TAG}"
+          echo "IMAGE_URI=${IMAGE_URI}"
+
+
+      - name: Build and push Docker image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --push \
+            -t "${{ steps.image.outputs.uri }}" \
+            .
+
+
+      - name: Read ECR image digest
+        id: ecr-image
+        shell: bash
+        run: |
+          IMAGE_DIGEST=$(aws ecr describe-images \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${{ steps.image.outputs.tag }}" \
+            --region "${AWS_REGION}" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          echo "digest=${IMAGE_DIGEST}" >> "${GITHUB_OUTPUT}"
+
+          echo "ECR image digest:"
+          echo "${IMAGE_DIGEST}"
+
+
+      - name: Render ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1.9.0
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.image.outputs.uri }}
+
+
+      - name: Deploy ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2.6.3
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          desired-count: 1
+          wait-for-service-stability: true
+
+
+      - name: Inspect ECS service
+        run: |
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" \
+            --query 'services[0].[status,desiredCount,runningCount,pendingCount,taskDefinition]' \
+            --output table
+
+
+      - name: Get running task
+        id: running-task
+        shell: bash
+        run: |
+          TASK_ARN=$(aws ecs list-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --service-name "${ECS_SERVICE}" \
+            --desired-status RUNNING \
+            --region "${AWS_REGION}" \
+            --query 'taskArns[0]' \
+            --output text)
+
+          if [ -z "${TASK_ARN}" ] || [ "${TASK_ARN}" = "None" ]; then
+            echo "ERROR: No RUNNING task found"
+            exit 1
+          fi
+
+          echo "task-arn=${TASK_ARN}" >> "${GITHUB_OUTPUT}"
+
+          echo "TASK_ARN=${TASK_ARN}"
+
+
+      - name: Verify running image
+        id: running-image
+        shell: bash
+        run: |
+          RUNNING_IMAGE=$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks "${{ steps.running-task.outputs.task-arn }}" \
+            --region "${AWS_REGION}" \
+            --query 'tasks[0].containers[0].image' \
+            --output text)
+
+          RUNNING_DIGEST=$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks "${{ steps.running-task.outputs.task-arn }}" \
+            --region "${AWS_REGION}" \
+            --query 'tasks[0].containers[0].imageDigest' \
+            --output text)
+
+          echo "RUNNING_IMAGE=${RUNNING_IMAGE}"
+          echo "RUNNING_DIGEST=${RUNNING_DIGEST}"
+
+          echo "image=${RUNNING_IMAGE}" >> "${GITHUB_OUTPUT}"
+          echo "digest=${RUNNING_DIGEST}" >> "${GITHUB_OUTPUT}"
+
+
+      - name: Verify digest traceability
+        shell: bash
+        run: |
+          EXPECTED_DIGEST="${{ steps.ecr-image.outputs.digest }}"
+          RUNNING_DIGEST="${{ steps.running-image.outputs.digest }}"
+
+          echo "Expected digest:"
+          echo "${EXPECTED_DIGEST}"
+
+          echo "Running digest:"
+          echo "${RUNNING_DIGEST}"
+
+          if [ "${EXPECTED_DIGEST}" != "${RUNNING_DIGEST}" ]; then
+            echo "FAIL: Running ECS digest does not match ECR image digest"
+            exit 1
+          fi
+
+          echo "PASS: ECS is running the exact image published by this workflow"
+
+
+      - name: Get Fargate ENI and Public IP
+        id: network
+        shell: bash
+        run: |
+          TASK_ARN="${{ steps.running-task.outputs.task-arn }}"
+
+          ENI_ID=$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks "${TASK_ARN}" \
+            --region "${AWS_REGION}" \
+            --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" \
+            --output text)
+
+          PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+            --network-interface-ids "${ENI_ID}" \
+            --region "${AWS_REGION}" \
+            --query 'NetworkInterfaces[0].Association.PublicIp' \
+            --output text)
+
+          echo "ENI_ID=${ENI_ID}"
+          echo "PUBLIC_IP=${PUBLIC_IP}"
+
+          echo "eni-id=${ENI_ID}" >> "${GITHUB_OUTPUT}"
+          echo "public-ip=${PUBLIC_IP}" >> "${GITHUB_OUTPUT}"
+
+
+      - name: HTTP smoke test
+        shell: bash
+        run: |
+          PUBLIC_IP="${{ steps.network.outputs.public-ip }}"
+
+          if [ -z "${PUBLIC_IP}" ] || [ "${PUBLIC_IP}" = "None" ]; then
+            echo "ERROR: No Public IP found"
+            exit 1
+          fi
+
+          echo "Testing http://${PUBLIC_IP}"
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 10 \
+            --retry-delay 3 \
+            --retry-connrefused \
+            "http://${PUBLIC_IP}/" \
+            > /dev/null
+
+          echo "PASS: HTTP smoke test completed successfully"
+
+
+      - name: Deployment summary
+        shell: bash
+        run: |
+          {
+            echo "## Lab04 ECS Deployment"
+            echo ""
+            echo "- Environment: development"
+            echo "- Region: ${AWS_REGION}"
+            echo "- ECS Cluster: ${ECS_CLUSTER}"
+            echo "- ECS Service: ${ECS_SERVICE}"
+            echo "- Image tag: ${{ steps.image.outputs.tag }}"
+            echo "- Image digest: ${{ steps.ecr-image.outputs.digest }}"
+            echo "- Task ARN: ${{ steps.running-task.outputs.task-arn }}"
+            echo "- ENI: ${{ steps.network.outputs.eni-id }}"
+            echo "- Public IP: ${{ steps.network.outputs.public-ip }}"
+            echo "- Digest verification: PASS"
+            echo "- HTTP smoke test: PASS"
+          } >> "${GITHUB_STEP_SUMMARY}"
