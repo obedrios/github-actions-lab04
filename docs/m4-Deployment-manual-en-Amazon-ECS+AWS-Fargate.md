@@ -1672,172 +1672,7 @@ Cluster
      Container
 ```
 
-## 44. Troubleshooting — Task queda en PENDING
-
-Consultar:
-
-```
-aws ecs describe-services \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --services "${ECS_SERVICE}" \
-  --region "${AWS_REGION}" \
-  --query 'services[0].events[0:10].[createdAt,message]' \
-  --output table
-```
-
-También:
-
-```
-aws ecs list-tasks \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --service-name "${ECS_SERVICE}" \
-  --desired-status STOPPED \
-  --region "${AWS_REGION}"
-```
-
-Posibles causas:
-
-```
-Networking
-IAM
-Image pull
-Architecture
-CPU / memory
-```
-
-## 45. Troubleshooting — CannotPullContainerError
-
-Síntoma:
-
-```
-CannotPullContainerError
-```
-
-Verificar:
-
-```
-ECR repository
-Image tag
-Execution Role
-Network access
-```
-
-Primero:
-
-```bash
-aws ecr describe-images \
-  --profile aws-lab \
-  --repository-name "${ECR_REPOSITORY}" \
-  --image-ids imageTag="${IMAGE_TAG}" \
-  --region "${AWS_REGION}"
-```
-
-Después comprobar:
-
-```bash
-aws iam list-attached-role-policies \
-  --profile aws-lab \
-  --role-name ecsTaskExecutionRole
-```
-
-Debe existir:
-
-```
-AmazonECSTaskExecutionRolePolicy
-```
-
-## 46. Troubleshooting — Exec format error
-
-Un error similar a:
-
-```
-exec format error
-```
-
-puede indicar incompatibilidad de arquitectura.
-
-En M3 utilizamos:
-
-```
-linux/amd64
-```
-
-y M4 utiliza:
-
-```
-LINUX
-X86_64
-```
-
-Verificar ECR:
-
-```bash
-docker image inspect \
-  "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
-  --format '{{.Os}}/{{.Architecture}}'
-```
-
-Esperamos:
-
-```
-linux/amd64
-```
-
-## 47. Troubleshooting — No responde la Public IP
-
-Si:
-
-```
-curl "http://${PUBLIC_IP}"
-```
-
-no responde, revisar:
-
-```
-Task RUNNING
-Public IP assigned
-Security Group
-TCP 80 inbound
-Subnet route to IGW
-Container port 80
-NGINX running
-```
-
-Verificar Security Group:
-
-```bash
-aws ec2 describe-security-groups \
-  --profile aws-lab \
-  --group-ids "${SECURITY_GROUP_ID}" \
-  --region "${AWS_REGION}"
-```
-
-## 48. Troubleshooting — Service no alcanza estabilidad
-
-Consultar:
-
-```bash
-aws ecs describe-services \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --services "${ECS_SERVICE}" \
-  --region "${AWS_REGION}"
-```
-
-Inspeccionar especialmente:
-
-```
-events
-deployments
-runningCount
-pendingCount
-```
-
-Los eventos ECS suelen proporcionar la primera pista del problema.
-
-## 49. Evidencia del milestone
+## 44. Evidencia del milestone
 
 Registrar:
 
@@ -1969,7 +1804,7 @@ Si todas las validaciones son correctas:
 M4 STATUS: PASS
 ```
 
-## 51. Qué demostramos en M4
+## 45. Qué demostramos en M4
 
 Hasta M3 teníamos:
 
@@ -2016,7 +1851,7 @@ a:
 Workload
 ```
 
-## 52. Separación conceptual importante
+## 46. Separación conceptual importante
 
 M3:
 
@@ -2057,7 +1892,7 @@ AWS Fargate
 Runs the Task
 ```
 
-## 53. Recursos que conservaremos
+## 47. Recursos que conservaremos
 
 No eliminaremos todavía:
 
@@ -2079,7 +1914,7 @@ M5 — Observabilidad y troubleshooting
 
 M5 partirá del servicio funcionando correctamente.
 
-## 54. Costos y duración del laboratorio
+## 48. Costos y duración del laboratorio
 
 A diferencia de ECR por sí solo, una Fargate Task ejecutándose consume recursos de cómputo.
 
@@ -2149,7 +1984,7 @@ Si no hay nada corriendo, deberiamos ver algo asi,
 
 
 
-## 55. Commit del milestone
+## 49. Commit del milestone
 
 Registrar los archivos creados para M4, especialmente:
 
@@ -2185,7 +2020,7 @@ git push
 
 
 
-## 56. Preparación para M5
+## 50. Preparación para M5
 
 El siguiente milestone será:
 
@@ -2252,6 +2087,173 @@ M4 STATUS: PASS
 ```
 
 
+
+## Troubleshooting
+
+### Troubleshooting — Task queda en PENDING
+
+Consultar:
+
+```
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].events[0:10].[createdAt,message]' \
+  --output table
+```
+
+También:
+
+```
+aws ecs list-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --service-name "${ECS_SERVICE}" \
+  --desired-status STOPPED \
+  --region "${AWS_REGION}"
+```
+
+Posibles causas:
+
+```
+Networking
+IAM
+Image pull
+Architecture
+CPU / memory
+```
+
+### Troubleshooting — CannotPullContainerError
+
+Síntoma:
+
+```
+CannotPullContainerError
+```
+
+Verificar:
+
+```
+ECR repository
+Image tag
+Execution Role
+Network access
+```
+
+Primero:
+
+```bash
+aws ecr describe-images \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-ids imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+```
+
+Después comprobar:
+
+```bash
+aws iam list-attached-role-policies \
+  --profile aws-lab \
+  --role-name ecsTaskExecutionRole
+```
+
+Debe existir:
+
+```
+AmazonECSTaskExecutionRolePolicy
+```
+
+### Troubleshooting — Exec format error
+
+Un error similar a:
+
+```
+exec format error
+```
+
+puede indicar incompatibilidad de arquitectura.
+
+En M3 utilizamos:
+
+```
+linux/amd64
+```
+
+y M4 utiliza:
+
+```
+LINUX
+X86_64
+```
+
+Verificar ECR:
+
+```bash
+docker image inspect \
+  "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
+  --format '{{.Os}}/{{.Architecture}}'
+```
+
+Esperamos:
+
+```
+linux/amd64
+```
+
+### Troubleshooting — No responde la Public IP
+
+Si:
+
+```
+curl "http://${PUBLIC_IP}"
+```
+
+no responde, revisar:
+
+```
+Task RUNNING
+Public IP assigned
+Security Group
+TCP 80 inbound
+Subnet route to IGW
+Container port 80
+NGINX running
+```
+
+Verificar Security Group:
+
+```bash
+aws ec2 describe-security-groups \
+  --profile aws-lab \
+  --group-ids "${SECURITY_GROUP_ID}" \
+  --region "${AWS_REGION}"
+```
+
+### Troubleshooting — Service no alcanza estabilidad
+
+Consultar:
+
+```bash
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}"
+```
+
+Inspeccionar especialmente:
+
+```
+events
+deployments
+runningCount
+pendingCount
+```
+
+Los eventos ECS suelen proporcionar la primera pista del problema.
 
 # Notes
 

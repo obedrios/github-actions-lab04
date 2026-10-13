@@ -1627,153 +1627,7 @@ El fallo estuvo completamente aislado.
 
 ---
 
-## 45. Troubleshooting — No aparecen logs
-
-Si:
-
-```bash
-aws logs tail "${LOG_GROUP}" ...
-```
-
-no devuelve información, verificar primero que la Task Definition activa tenga:
-
-```text
-logDriver = awslogs
-```
-
-Consultar:
-
-```bash
-aws ecs describe-task-definition \
-  --profile aws-lab \
-  --task-definition "${TASK_FAMILY}" \
-  --region "${AWS_REGION}" \
-  --query 'taskDefinition.containerDefinitions[0].logConfiguration' \
-  --output json
-```
-
-Después generar tráfico:
-
-```bash
-curl -I "http://${PUBLIC_IP}"
-```
-
-Y consultar nuevamente:
-
-```bash
-aws logs tail "${LOG_GROUP}" \
-  --profile aws-lab \
-  --since 5m \
-  --region "${AWS_REGION}"
-```
-
----
-
-## 46. Troubleshooting — ResourceInitializationError
-
-Si una Task falla con algo relacionado con:
-
-```text
-ResourceInitializationError
-```
-
-revisar:
-
-```text
-Execution Role
-CloudWatch permissions
-Network connectivity
-Log Group existence
-ECR connectivity
-```
-
-Consultar:
-
-```bash
-aws ecs describe-tasks \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --tasks "<TASK_ARN>" \
-  --region "${AWS_REGION}"
-```
-
-y revisar:
-
-```text
-stoppedReason
-containers[].reason
-```
-
----
-
-## 47. Troubleshooting — Service no alcanza estabilidad
-
-Consultar eventos:
-
-```bash
-aws ecs describe-services \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --services "${ECS_SERVICE}" \
-  --region "${AWS_REGION}" \
-  --query 'services[0].events[0:15].[createdAt,message]' \
-  --output table
-```
-
-También revisar deployments:
-
-```bash
-aws ecs describe-services \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --services "${ECS_SERVICE}" \
-  --region "${AWS_REGION}" \
-  --query 'services[0].deployments' \
-  --output json
-```
-
----
-
-## 48. Troubleshooting — Aplicación responde 404
-
-Un:
-
-```text
-HTTP 404
-```
-
-no significa necesariamente que ECS o Fargate estén fallando.
-
-Si:
-
-```text
-Task = RUNNING
-NGINX = responding
-```
-
-y una ruta concreta devuelve:
-
-```text
-404
-```
-
-el problema probablemente pertenece al nivel:
-
-```text
-Application / routing
-```
-
-y no al nivel:
-
-```text
-Infrastructure
-```
-
-Consultar los logs de NGINX permite verificar exactamente qué URI fue solicitada.
-
----
-
-## 49. Matriz de diagnóstico
+## 45. Matriz de diagnóstico
 
 | Síntoma                 | Primera fuente a revisar                     |
 | ----------------------- | -------------------------------------------- |
@@ -1789,7 +1643,7 @@ Consultar los logs de NGINX permite verificar exactamente qué URI fue solicitad
 
 ---
 
-## 50. Modelo mental de observabilidad
+## 46. Modelo mental de observabilidad
 
 Podemos organizar el diagnóstico por capas:
 
@@ -1833,7 +1687,7 @@ Un buen diagnóstico comienza identificando:
 
 ---
 
-## 51. Evidencia del milestone
+## 47. Evidencia del milestone
 
 Registrar:
 
@@ -1902,7 +1756,7 @@ Resolution:
 
 ---
 
-## 52. Checklist final de M5
+## 48. Checklist final de M5
 
 ```text
 M5 — Observabilidad y troubleshooting
@@ -1961,9 +1815,7 @@ Si todo es correcto:
 M5 STATUS: PASS
 ```
 
----
-
-## 53. Qué demostramos en M5
+## 49. Qué demostramos en M5
 
 M4 terminó con:
 
@@ -2020,7 +1872,7 @@ Root Cause
 
 ---
 
-## 54. Diferencia entre monitoring y troubleshooting
+## 50. Diferencia entre monitoring y troubleshooting
 
 Durante M5 utilizamos observabilidad tanto de forma pasiva como activa.
 
@@ -2064,7 +1916,7 @@ Ambas habilidades son complementarias.
 
 ---
 
-## 55. Hallazgo fundamental de M5
+## 51. Hallazgo fundamental de M5
 
 Un error en un workload containerizado puede ocurrir antes de que exista un proceso de aplicación.
 
@@ -2104,7 +1956,7 @@ Por tanto:
 
 ---
 
-## 56. Recursos que conservaremos
+## 52. Recursos que conservaremos
 
 No eliminaremos todavía:
 
@@ -2134,7 +1986,7 @@ puede conservarse como evidencia o eliminarse posteriormente durante M8.
 
 ---
 
-## 57. Pausar el laboratorio
+## 53. Pausar el laboratorio
 
 Si se realizará una pausa antes de M6, detener el cómputo Fargate:
 
@@ -2171,7 +2023,7 @@ CloudWatch Log Group y ECR seguirán existiendo, pero no habrá una Fargate Task
 
 ---
 
-## 58. Reanudar el laboratorio
+## 54. Reanudar el laboratorio
 
 Para M6:
 
@@ -2204,7 +2056,7 @@ New Public IP
 
 ---
 
-## 59. Commit del milestone
+## 55. Commit del milestone
 
 Los nuevos archivos pueden incluir:
 
@@ -2240,7 +2092,7 @@ git push
 
 ---
 
-## 60. Preparación para M6
+## 56. Preparación para M6
 
 El siguiente milestone será:
 
@@ -2306,3 +2158,155 @@ M5 puede considerarse cerrado cuando:
 ```text
 M5 STATUS: PASS
 ```
+
+## Troubleshooting
+
+### Troubleshooting — No aparecen logs
+
+Si:
+
+```bash
+aws logs tail "${LOG_GROUP}" ...
+```
+
+no devuelve información, verificar primero que la Task Definition activa tenga:
+
+```text
+logDriver = awslogs
+```
+
+Consultar:
+
+```bash
+aws ecs describe-task-definition \
+  --profile aws-lab \
+  --task-definition "${TASK_FAMILY}" \
+  --region "${AWS_REGION}" \
+  --query 'taskDefinition.containerDefinitions[0].logConfiguration' \
+  --output json
+```
+
+Después generar tráfico:
+
+```bash
+curl -I "http://${PUBLIC_IP}"
+```
+
+Y consultar nuevamente:
+
+```bash
+aws logs tail "${LOG_GROUP}" \
+  --profile aws-lab \
+  --since 5m \
+  --region "${AWS_REGION}"
+```
+
+---
+
+### Troubleshooting — ResourceInitializationError
+
+Si una Task falla con algo relacionado con:
+
+```text
+ResourceInitializationError
+```
+
+revisar:
+
+```text
+Execution Role
+CloudWatch permissions
+Network connectivity
+Log Group existence
+ECR connectivity
+```
+
+Consultar:
+
+```bash
+aws ecs describe-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --tasks "<TASK_ARN>" \
+  --region "${AWS_REGION}"
+```
+
+y revisar:
+
+```text
+stoppedReason
+containers[].reason
+```
+
+---
+
+### Troubleshooting — Service no alcanza estabilidad
+
+Consultar eventos:
+
+```bash
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].events[0:15].[createdAt,message]' \
+  --output table
+```
+
+También revisar deployments:
+
+```bash
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].deployments' \
+  --output json
+```
+
+---
+
+### Troubleshooting — Aplicación responde 404
+
+Un:
+
+```text
+HTTP 404
+```
+
+no significa necesariamente que ECS o Fargate estén fallando.
+
+Si:
+
+```text
+Task = RUNNING
+NGINX = responding
+```
+
+y una ruta concreta devuelve:
+
+```text
+404
+```
+
+el problema probablemente pertenece al nivel:
+
+```text
+Application / routing
+```
+
+y no al nivel:
+
+```text
+Infrastructure
+```
+
+Consultar los logs de NGINX permite verificar exactamente qué URI fue solicitada.
+
+---
+
+
+---
+
