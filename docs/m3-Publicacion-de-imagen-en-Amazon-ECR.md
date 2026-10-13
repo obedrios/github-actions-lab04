@@ -1079,123 +1079,7 @@ Checkpoint 4: PASS
 
 ---
 
-## 25. Troubleshooting real — ScanNotFoundException
-
-Durante la primera ejecución observamos:
-
-```text
-ScanNotFoundException
-```
-
-al ejecutar:
-
-```bash
-aws ecr describe-image-scan-findings ...
-```
-
-Interpretación:
-
-```text
-Image exists
-     │
-     ▼
-No scan exists for that artifact
-```
-
-Esto no indicaba que:
-
-```text
-docker push
-```
-
-hubiera fallado.
-
-Indicaba únicamente que ECR no tenía un scan asociado al artefacto consultado.
-
----
-
-## 26. Troubleshooting real — UnsupportedImageTypeException
-
-Posteriormente se ejecutó:
-
-```bash
-aws ecr start-image-scan ...
-```
-
-y se obtuvo:
-
-```text
-UnsupportedImageTypeException
-```
-
-con:
-
-```text
-application/vnd.oci.image.index.v1+json
-```
-
-La cadena del diagnóstico fue:
-
-```text
-m3-v1
-   │
-   ▼
-OCI Image Index
-   │
-   ▼
-ECR Basic Scanner
-   │
-   X
-UnsupportedImageTypeException
-```
-
-El problema no estaba en:
-
-- NGINX;
-- Docusaurus;
-- Alpine;
-- Docker layers;
-- ECR authentication.
-
-El problema era el **tipo de artefacto** que estaba siendo solicitado al scanner.
-
----
-
-## 27. Resolución del hallazgo
-
-La imagen se reconstruye deliberadamente como:
-
-```text
-single platform
-+
-no provenance attestation
-+
-no SBOM attestation
-+
-OCI media types
-```
-
-mediante:
-
-```bash
-docker buildx build \
-  --platform linux/amd64 \
-  --provenance=false \
-  --sbom=false \
-  --output type=image,push=true,oci-mediatypes=true \
-  -t "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
-  .
-```
-
-El resultado deseado es:
-
-```text
-application/vnd.oci.image.manifest.v1+json
-```
-
----
-
-## 28. Si m3-v1 ya existe por una ejecución anterior
+## 25. Si m3-v1 ya existe por una ejecución anterior
 
 Como el repositorio utiliza:
 
@@ -1253,7 +1137,7 @@ No introducimos otro tag.
 
 ---
 
-## 29. Verificar desde AWS Console
+## 26. Verificar desde AWS Console
 
 Navegar:
 
@@ -1289,7 +1173,7 @@ Scan status
 
 ---
 
-## 30. Descargar la imagen desde ECR
+## 27. Descargar la imagen desde ECR
 
 Autenticar Docker si fuera necesario:
 
@@ -1316,7 +1200,7 @@ docker image ls
 
 ---
 
-## 31. Ejecutar la imagen obtenida desde ECR
+## 28. Ejecutar la imagen obtenida desde ECR
 
 Ejecutar:
 
@@ -1337,7 +1221,7 @@ docker ps
 
 ---
 
-## 32. Smoke test
+## 29. Smoke test
 
 Comprobar:
 
@@ -1369,7 +1253,7 @@ Como aprendimos en M2, un flujo válido puede ser:
 
 ---
 
-## 33. Checkpoint 5 — Registry round trip
+## 30. Checkpoint 5 — Registry round trip
 
 ```text
 OCI Image Manifest
@@ -1408,7 +1292,7 @@ Checkpoint 5: PASS
 
 ---
 
-## 34. Limpiar el contenedor local
+## 31. Limpiar el contenedor local
 
 Ejecutar:
 
@@ -1433,7 +1317,7 @@ porque serán utilizados durante M4.
 
 ---
 
-## 35. Revisar arquitectura de la imagen
+## 32. Revisar arquitectura de la imagen
 
 Ejecutar:
 
@@ -1453,117 +1337,7 @@ Este dato será necesario al configurar posteriormente la Task Definition de ECS
 
 ---
 
-## 36. Troubleshooting — No basic auth credentials
-
-Síntoma:
-
-```text
-no basic auth credentials
-```
-
-Solución:
-
-```bash
-aws ecr get-login-password \
-  --profile aws-lab \
-  --region "${AWS_REGION}" \
-  | docker login \
-      --username AWS \
-      --password-stdin "${ECR_REGISTRY}"
-```
-
-Verificar siempre:
-
-```text
-ECR Region
-=
-Login Region
-```
-
----
-
-## 37. Troubleshooting — Repository does not exist
-
-Verificar:
-
-```bash
-aws ecr describe-repositories \
-  --profile aws-lab \
-  --region "${AWS_REGION}"
-```
-
-Después:
-
-```bash
-echo "${ECR_REPOSITORY_URI}"
-```
-
-Posibles causas:
-
-```text
-Wrong AWS region
-Wrong repository name
-Wrong AWS account
-Incorrect repository URI
-```
-
----
-
-## 38. Troubleshooting — AccessDenied
-
-Comprobar la identidad:
-
-```bash
-aws sts get-caller-identity \
-  --profile aws-lab
-```
-
-La identidad debe disponer de permisos ECR suficientes para las operaciones del laboratorio.
-
-No debemos solucionar problemas de permisos almacenando access keys dentro del repositorio.
-
----
-
-## 39. Troubleshooting — Immutable tag
-
-Si:
-
-```text
-m3-v1
-```
-
-ya existe, ECR no permitirá reemplazarlo porque configuramos:
-
-```text
-IMMUTABLE
-```
-
-Para reiniciar este milestone conservando el mismo tag:
-
-```bash
-aws ecr batch-delete-image \
-  --profile aws-lab \
-  --repository-name "${ECR_REPOSITORY}" \
-  --image-ids imageTag="${IMAGE_TAG}" \
-  --region "${AWS_REGION}"
-```
-
-Después volver a construir y publicar:
-
-```text
-m3-v1
-```
-
-Esto preserva la simplicidad del hands-on:
-
-```text
-M3
-└── m3-v1
-```
-
----
-
-## 40. Evidencia del milestone
+## 33. Evidencia del milestone
 
 Registrar:
 
@@ -1635,7 +1409,7 @@ Final validation:
 
 ---
 
-## 41. Checklist final de M3
+## 34. Checklist final de M3
 
 ```text
 M3 — Publicación de la imagen en Amazon ECR
@@ -1693,9 +1467,7 @@ Si todo es correcto:
 M3 STATUS: PASS
 ```
 
----
-
-## 42. Qué demostramos en M3
+## 35. Qué demostramos en M3
 
 M1:
 
@@ -1760,7 +1532,7 @@ y comprendimos por qué una estructura OCI válida puede no ser adecuada para un
 
 ---
 
-## 43. Aprendizaje adicional — Software Supply Chain
+## 36. Aprendizaje adicional — Software Supply Chain
 
 El hallazgo de M3 introduce anticipadamente conceptos de software supply-chain security:
 
@@ -1779,7 +1551,7 @@ En un entorno productivo estos mecanismos deberían evaluarse como característi
 
 ---
 
-## 44. Separación conceptual importante
+## 37. Separación conceptual importante
 
 Al finalizar M3 tenemos:
 
@@ -1803,7 +1575,7 @@ No ejecuta nuestra aplicación.
 
 ---
 
-## 45. Conservación del recurso para M4
+## 38. Conservación del recurso para M4
 
 No eliminaremos:
 
@@ -1868,7 +1640,7 @@ rm -rf /tmp/lab04-oci-index
 
 ---
 
-## 47. Commit del milestone
+## 39. Commit del milestone
 
 Revisar:
 
@@ -1896,7 +1668,7 @@ git push
 
 ---
 
-## 48. Preparación para M4
+## 40. Preparación para M4
 
 El siguiente milestone será:
 
@@ -1953,3 +1725,235 @@ M3 puede considerarse cerrado cuando:
 ```text
 M3 STATUS: PASS
 ```
+
+## Troubleshooting
+
+### Troubleshooting real — ScanNotFoundException
+
+Durante la primera ejecución observamos:
+
+```text
+ScanNotFoundException
+```
+
+al ejecutar:
+
+```bash
+aws ecr describe-image-scan-findings ...
+```
+
+Interpretación:
+
+```text
+Image exists
+     │
+     ▼
+No scan exists for that artifact
+```
+
+Esto no indicaba que:
+
+```text
+docker push
+```
+
+hubiera fallado.
+
+Indicaba únicamente que ECR no tenía un scan asociado al artefacto consultado.
+
+---
+
+### Troubleshooting real — UnsupportedImageTypeException
+
+Posteriormente se ejecutó:
+
+```bash
+aws ecr start-image-scan ...
+```
+
+y se obtuvo:
+
+```text
+UnsupportedImageTypeException
+```
+
+con:
+
+```text
+application/vnd.oci.image.index.v1+json
+```
+
+La cadena del diagnóstico fue:
+
+```text
+m3-v1
+   │
+   ▼
+OCI Image Index
+   │
+   ▼
+ECR Basic Scanner
+   │
+   X
+UnsupportedImageTypeException
+```
+
+El problema no estaba en:
+
+- NGINX;
+- Docusaurus;
+- Alpine;
+- Docker layers;
+- ECR authentication.
+
+El problema era el **tipo de artefacto** que estaba siendo solicitado al scanner.
+
+---
+
+### Resolución del hallazgo
+
+La imagen se reconstruye deliberadamente como:
+
+```text
+single platform
++
+no provenance attestation
++
+no SBOM attestation
++
+OCI media types
+```
+
+mediante:
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --sbom=false \
+  --output type=image,push=true,oci-mediatypes=true \
+  -t "${ECR_REPOSITORY_URI}:${IMAGE_TAG}" \
+  .
+```
+
+El resultado deseado es:
+
+```text
+application/vnd.oci.image.manifest.v1+json
+```
+
+---
+
+### Troubleshooting — No basic auth credentials
+
+Síntoma:
+
+```text
+no basic auth credentials
+```
+
+Solución:
+
+```bash
+aws ecr get-login-password \
+  --profile aws-lab \
+  --region "${AWS_REGION}" \
+  | docker login \
+      --username AWS \
+      --password-stdin "${ECR_REGISTRY}"
+```
+
+Verificar siempre:
+
+```text
+ECR Region
+=
+Login Region
+```
+
+---
+
+### Troubleshooting — Repository does not exist
+
+Verificar:
+
+```bash
+aws ecr describe-repositories \
+  --profile aws-lab \
+  --region "${AWS_REGION}"
+```
+
+Después:
+
+```bash
+echo "${ECR_REPOSITORY_URI}"
+```
+
+Posibles causas:
+
+```text
+Wrong AWS region
+Wrong repository name
+Wrong AWS account
+Incorrect repository URI
+```
+
+---
+
+### Troubleshooting — AccessDenied
+
+Comprobar la identidad:
+
+```bash
+aws sts get-caller-identity \
+  --profile aws-lab
+```
+
+La identidad debe disponer de permisos ECR suficientes para las operaciones del laboratorio.
+
+No debemos solucionar problemas de permisos almacenando access keys dentro del repositorio.
+
+---
+
+### Troubleshooting — Immutable tag
+
+Si:
+
+```text
+m3-v1
+```
+
+ya existe, ECR no permitirá reemplazarlo porque configuramos:
+
+```text
+IMMUTABLE
+```
+
+Para reiniciar este milestone conservando el mismo tag:
+
+```bash
+aws ecr batch-delete-image \
+  --profile aws-lab \
+  --repository-name "${ECR_REPOSITORY}" \
+  --image-ids imageTag="${IMAGE_TAG}" \
+  --region "${AWS_REGION}"
+```
+
+Después volver a construir y publicar:
+
+```text
+m3-v1
+```
+
+Esto preserva la simplicidad del hands-on:
+
+```text
+M3
+└── m3-v1
+```
+
+---
+
+
+---
+

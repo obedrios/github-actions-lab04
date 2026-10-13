@@ -457,7 +457,7 @@ Generando:
 /app/build/
 ```
 
-### 9. Stage 2 — Runtime
+### Stage 2 — Runtime
 
 La segunda etapa comienza con:
 
@@ -485,7 +485,7 @@ Docusaurus static files
 
 Esta separación es la finalidad principal de un build multi-stage.
 
-## 10. Copiar configuración de NGINX
+## 9. Copiar configuración de NGINX
 
 La instrucción:
 
@@ -495,7 +495,7 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 reemplaza la configuración por defecto utilizada para servir nuestro sitio.
 
-## 11. Copiar el artefacto entre stages
+## 10. Copiar el artefacto entre stages
 
 La línea:
 
@@ -519,7 +519,7 @@ Runtime
 
 Estamos promoviendo únicamente el **artefacto generado**, no todo el entorno de construcción.
 
-## 12. Puerto del contenedor
+## 11. Puerto del contenedor
 
 El Dockerfile declara:
 
@@ -547,7 +547,7 @@ Host                 Container
 localhost:8080  ───►  port 80
 ```
 
-## 13. Construir la imagen Docker
+## 12. Construir la imagen Docker
 
 Desde la raíz del proyecto ejecutar:
 
@@ -572,7 +572,7 @@ Dockerfile
 
 El proceso debe finalizar correctamente.
 
-## 14. Checkpoint 1 — Docker build
+## 13. Checkpoint 1 — Docker build
 
 Verificar:
 
@@ -590,7 +590,7 @@ Resultado esperado:
 Checkpoint 1: PASS
 ```
 
-## 15. Verificar la imagen
+## 14. Verificar la imagen
 
 Ejecutar:
 
@@ -626,7 +626,7 @@ Size:
 ...
 ```
 
-## 16. Ejecutar el contenedor
+## 15. Ejecutar el contenedor
 
 Ejecutar:
 
@@ -653,7 +653,7 @@ container:80
 NGINX
 ```
 
-## 17. Verificar el contenedor
+## 16. Verificar el contenedor
 
 Ejecutar:
 
@@ -673,7 +673,7 @@ con un mapeo similar a:
 0.0.0.0:8080->80/tcp
 ```
 
-## 18. Abrir Docusaurus
+## 17. Abrir Docusaurus
 
 Abrir en el navegador:
 
@@ -691,7 +691,7 @@ Navegar también hacia una página de documentación, por ejemplo:
 /docs/m1-docusaurus-bootstrap/
 ```
 
-## 19. Checkpoint 2 — Ejecución local
+## 18. Checkpoint 2 — Ejecución local
 
 Verificar:
 
@@ -712,7 +712,7 @@ Resultado esperado:
 Checkpoint 2: PASS
 ```
 
-## 20. Verificar mediante `curl`
+## 19. Verificar mediante `curl`
 
 Primero verificar la raíz:
 
@@ -750,7 +750,7 @@ Esto no representa un error.
 
 Indica que NGINX está canonicalizando una ruta que corresponde a un directorio.
 
-## 21. Validar la URL canónica
+## 20. Validar la URL canónica
 
 Ejecutar:
 
@@ -779,7 +779,7 @@ Conceptualmente:
 200 OK
 ```
 
-## 22. Seguir automáticamente la redirección
+## 21. Seguir automáticamente la redirección
 
 Podemos pedir a `curl` que siga redirecciones:
 
@@ -808,7 +808,7 @@ Canonical redirect
 Valid Docusaurus page
 ```
 
-## 23. Checkpoint 3 — Smoke test
+## 22. Checkpoint 3 — Smoke test
 
 El smoke test debe considerar correctamente el comportamiento de URLs canónicas.
 
@@ -849,226 +849,7 @@ curl
     └── error → FAIL
 ```
 
-## 24. Troubleshooting real — HTTP 301 en rutas Docusaurus
-
-Durante la ejecución de M2 se observó el siguiente comportamiento:
-
-```
-curl -I http://localhost:8080/docs/m1-docusaurus-bootstrap
-```
-
-Respuesta:
-
-```
-HTTP/1.1 301 Moved Permanently
-Server: nginx
-Location: http://localhost/docs/m1-docusaurus-bootstrap/
-```
-
-El archivo sí existía, pero la respuesta no era `200`.
-
-Diagnóstico
-
-La página Docusaurus estaba físicamente representada como:
-
-```
-/usr/share/nginx/html/
-└── docs/
-    └── m1-docusaurus-bootstrap/
-        └── index.html
-```
-
-La petición:
-
-```
-/docs/m1-docusaurus-bootstrap
-```
-
-apuntaba realmente a un directorio.
-
-NGINX agregó automáticamente:
-
-```
-/
-```
-
-para canonicalizar la URL.
-
-Por tanto:
-
-```
-301 Moved Permanently
-```
-
-era un comportamiento esperado.
-
-## 25. Problema adicional detectado
-
-Aunque el `301` era correcto, se detectó que el header:
-
-```
-Location
-```
-
-contenía:
-
-```
-http://localhost/docs/m1-docusaurus-bootstrap/
-```
-
-en lugar de:
-
-```
-http://localhost:8080/docs/m1-docusaurus-bootstrap/
-```
-
-El puerto `8080` desaparecía.
-
-La causa es que:
-
-```
-Docker Host
-8080
-  │
-  ▼
-Container
-80
-```
-
-NGINX solamente conoce su puerto interno `80`.
-
-Al generar una URL absoluta, no tiene conocimiento directo del puerto publicado por Docker.
-
-## 26. Resolución
-
-Se agregó:
-
-```
-absolute_redirect off;
-```
-
-a la configuración:
-
-```
-server {
-    listen 80;
-    server_name _;
-
-    absolute_redirect off;
-
-    root /usr/share/nginx/html;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ $uri.html =404;
-    }
-}
-```
-
-Después fue necesario reconstruir la imagen.
-
-## 27. Reconstruir después del cambio
-
-Detener el contenedor:
-
-```
-docker stop lab04-docusaurus
-```
-
-Eliminarlo:
-
-```
-docker rm lab04-docusaurus
-```
-
-Reconstruir:
-
-```
-docker build -t lab04-docusaurus:local .
-```
-
-Ejecutar nuevamente:
-
-```
-docker run \
-  --name lab04-docusaurus \
-  -d \
-  -p 8080:80 \
-  lab04-docusaurus:local
-```
-
-## 28. Validar la corrección
-
-Ejecutar:
-
-```
-curl -I http://localhost:8080/docs/m1-docusaurus-bootstrap
-```
-
-Esperamos algo similar a:
-
-```
-HTTP/1.1 301 Moved Permanently
-Location: /docs/m1-docusaurus-bootstrap/
-```
-
-La diferencia importante es:
-
-```
-Antes:
-Location: http://localhost/docs/m1-docusaurus-bootstrap/
-
-Después:
-Location: /docs/m1-docusaurus-bootstrap/
-```
-
-Al ser una URL relativa, el cliente conserva:
-
-```
-localhost:8080
-```
-
-Después:
-
-```
-curl -I http://localhost:8080/docs/m1-docusaurus-bootstrap/
-```
-
-deberá responder:
-
-```
-HTTP/1.1 200 OK
-```
-
-## 29. Evidencia de troubleshooting
-
-Registrar:
-
-```
-Issue:
-Docusaurus documentation route without trailing slash returned HTTP 301.
-
-Cause:
-The generated Docusaurus page is represented as a directory
-containing index.html.
-
-Observed behavior:
-NGINX canonicalized the directory URL by adding a trailing slash.
-
-Additional issue:
-The absolute redirect omitted Docker's externally mapped port 8080.
-
-Resolution:
-Added `absolute_redirect off;` to nginx.conf so redirects remain relative.
-
-Validation:
-The canonical route with trailing slash returns HTTP 200.
-The redirect now uses a relative Location header.
-```
-
-Este hallazgo debe conservarse para la sección de troubleshooting del documento final del Lab 04.
-
-## 30. Revisar los logs
+## 23. Revisar los logs
 
 Ejecutar:
 
@@ -1109,7 +890,7 @@ container logs
 Amazon CloudWatch Logs
 ```
 
-## 31. Inspeccionar el contenedor
+## 24. Inspeccionar el contenedor
 
 Podemos entrar temporalmente:
 
@@ -1164,7 +945,7 @@ Docusaurus build
 NGINX
 ```
 
-## 32. Verificar que Node.js no está en el runtime
+## 25. Verificar que Node.js no está en el runtime
 
 Una ventaja importante del multi-stage build es que Node.js solo pertenece al builder.
 
@@ -1189,7 +970,7 @@ source code              No npm
 
 El runtime contiene solamente lo necesario para servir la aplicación.
 
-## 33. Detener el contenedor
+## 26. Detener el contenedor
 
 Ejecutar:
 
@@ -1211,7 +992,7 @@ Podemos observarlo con:
 docker ps -a
 ```
 
-## 34. Eliminar el contenedor
+## 27. Eliminar el contenedor
 
 Ejecutar:
 
@@ -1235,7 +1016,7 @@ Image
   └── sin que exista un container ejecutándose
 ```
 
-## 35. Reconstrucción de reproducibilidad
+## 28. Reconstrucción de reproducibilidad
 
 Como prueba adicional podemos volver a levantar un nuevo contenedor utilizando exactamente la misma imagen:
 
@@ -1276,7 +1057,7 @@ Docusaurus route:
 301 → 200
 ```
 
-## 36. Checklist final de M2
+## 29. Checklist final de M2
 
 ```
 M2 — Containerización con Docker + NGINX
@@ -1316,7 +1097,7 @@ Si todas las verificaciones son correctas:
 M2 STATUS: PASS
 ```
 
-## 37. Evidencia sugerida
+## 30. Evidencia sugerida
 
 Registrar:
 
@@ -1368,7 +1149,7 @@ Final validation:
 - Canonical URL returns HTTP 200.
 ```
 
-## 38. Commit del milestone
+## 31. Commit del milestone
 
 Revisar:
 
@@ -1400,7 +1181,7 @@ Si la corrección de `absolute_redirect` se realizó en un commit independiente,
 git commit -m "fix: preserve docker port in nginx redirects"
 ```
 
-## 39. Qué demostramos en M2
+## 32. Qué demostramos en M2
 
 Al finalizar M2 habremos demostrado:
 
@@ -1470,7 +1251,7 @@ Trailing-slash URL
          200
 ```
 
-## 40. Relación con M1
+## 33. Relación con M1
 
 En M1 demostramos:
 
@@ -1507,7 +1288,7 @@ Container
 
 La aplicación ya está empaquetada como una unidad reproducible.
 
-## 41. Preparación para M3
+## 34. Preparación para M3
 
 El siguiente milestone será:
 
@@ -1574,3 +1355,226 @@ El milestone puede considerarse cerrado cuando:
 ```
 M2 STATUS: PASS
 ```
+
+## Troubleshooting
+
+### Troubleshooting real — HTTP 301 en rutas Docusaurus
+
+Durante la ejecución de M2 se observó el siguiente comportamiento:
+
+```
+curl -I http://localhost:8080/docs/m1-docusaurus-bootstrap
+```
+
+Respuesta:
+
+```
+HTTP/1.1 301 Moved Permanently
+Server: nginx
+Location: http://localhost/docs/m1-docusaurus-bootstrap/
+```
+
+El archivo sí existía, pero la respuesta no era `200`.
+
+Diagnóstico
+
+La página Docusaurus estaba físicamente representada como:
+
+```
+/usr/share/nginx/html/
+└── docs/
+    └── m1-docusaurus-bootstrap/
+        └── index.html
+```
+
+La petición:
+
+```
+/docs/m1-docusaurus-bootstrap
+```
+
+apuntaba realmente a un directorio.
+
+NGINX agregó automáticamente:
+
+```
+/
+```
+
+para canonicalizar la URL.
+
+Por tanto:
+
+```
+301 Moved Permanently
+```
+
+era un comportamiento esperado.
+
+### Problema adicional detectado
+
+Aunque el `301` era correcto, se detectó que el header:
+
+```
+Location
+```
+
+contenía:
+
+```
+http://localhost/docs/m1-docusaurus-bootstrap/
+```
+
+en lugar de:
+
+```
+http://localhost:8080/docs/m1-docusaurus-bootstrap/
+```
+
+El puerto `8080` desaparecía.
+
+La causa es que:
+
+```
+Docker Host
+8080
+  │
+  ▼
+Container
+80
+```
+
+NGINX solamente conoce su puerto interno `80`.
+
+Al generar una URL absoluta, no tiene conocimiento directo del puerto publicado por Docker.
+
+### Resolución
+
+Se agregó:
+
+```
+absolute_redirect off;
+```
+
+a la configuración:
+
+```
+server {
+    listen 80;
+    server_name _;
+
+    absolute_redirect off;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ $uri.html =404;
+    }
+}
+```
+
+Después fue necesario reconstruir la imagen.
+
+### Reconstruir después del cambio
+
+Detener el contenedor:
+
+```
+docker stop lab04-docusaurus
+```
+
+Eliminarlo:
+
+```
+docker rm lab04-docusaurus
+```
+
+Reconstruir:
+
+```
+docker build -t lab04-docusaurus:local .
+```
+
+Ejecutar nuevamente:
+
+```
+docker run \
+  --name lab04-docusaurus \
+  -d \
+  -p 8080:80 \
+  lab04-docusaurus:local
+```
+
+### Validar la corrección
+
+Ejecutar:
+
+```
+curl -I http://localhost:8080/docs/m1-docusaurus-bootstrap
+```
+
+Esperamos algo similar a:
+
+```
+HTTP/1.1 301 Moved Permanently
+Location: /docs/m1-docusaurus-bootstrap/
+```
+
+La diferencia importante es:
+
+```
+Antes:
+Location: http://localhost/docs/m1-docusaurus-bootstrap/
+
+Después:
+Location: /docs/m1-docusaurus-bootstrap/
+```
+
+Al ser una URL relativa, el cliente conserva:
+
+```
+localhost:8080
+```
+
+Después:
+
+```
+curl -I http://localhost:8080/docs/m1-docusaurus-bootstrap/
+```
+
+deberá responder:
+
+```
+HTTP/1.1 200 OK
+```
+
+### Evidencia de troubleshooting
+
+Registrar:
+
+```
+Issue:
+Docusaurus documentation route without trailing slash returned HTTP 301.
+
+Cause:
+The generated Docusaurus page is represented as a directory
+containing index.html.
+
+Observed behavior:
+NGINX canonicalized the directory URL by adding a trailing slash.
+
+Additional issue:
+The absolute redirect omitted Docker's externally mapped port 8080.
+
+Resolution:
+Added `absolute_redirect off;` to nginx.conf so redirects remain relative.
+
+Validation:
+The canonical route with trailing slash returns HTTP 200.
+The redirect now uses a relative Location header.
+```
+
+Este hallazgo debe conservarse para la sección de troubleshooting del documento final del Lab 04.
+
+

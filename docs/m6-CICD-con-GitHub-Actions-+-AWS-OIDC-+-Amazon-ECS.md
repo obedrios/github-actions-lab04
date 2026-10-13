@@ -1964,7 +1964,7 @@ Deployment
 
 ---
 
-## 38. `permissions: id-token: write`
+## 37. `permissions: id-token: write`
 
 Esta línea:
 
@@ -1998,7 +1998,7 @@ AWS decide finalmente si el workflow puede asumir el role.
 
 ---
 
-## 39. Importancia de `environment: development`
+## 38. Importancia de `environment: development`
 
 Tenemos:
 
@@ -2027,7 +2027,7 @@ en lugar de confiar en cualquier workflow.
 
 ---
 
-## 40. Validar YAML antes del push
+## 39. Validar YAML antes del push
 
 Verificar:
 
@@ -2049,7 +2049,7 @@ Las policies utilizadas exclusivamente para crear IAM pueden conservarse como do
 
 ---
 
-## 41. Seguridad antes del commit
+## 40. Seguridad antes del commit
 
 Antes de hacer commit verificar que no exista:
 
@@ -2079,7 +2079,7 @@ Idealmente no debe encontrarse ninguna credencial real.
 
 ---
 
-## 42. Commit inicial de M6
+## 41. Commit inicial de M6
 
 Ejemplo:
 
@@ -2093,7 +2093,7 @@ git commit -m "ci: deploy Docusaurus to ECS with GitHub OIDC"
 
 ---
 
-## 43. Publicar rama development
+## 42. Publicar rama development
 
 Verificar rama:
 
@@ -2121,7 +2121,7 @@ Deploy Lab04 to ECS
 
 ---
 
-## 44. Observar workflow
+## 43. Observar workflow
 
 En GitHub:
 
@@ -2157,7 +2157,7 @@ deploy
 
 ---
 
-## 45. Verificar autenticación OIDC
+## 44. Verificar autenticación OIDC
 
 El step:
 
@@ -2202,7 +2202,7 @@ funcionó correctamente.
 
 ---
 
-## 46. Verificar imagen creada en ECR
+## 45. Verificar imagen creada en ECR
 
 Después de un workflow exitoso:
 
@@ -2223,7 +2223,7 @@ sha-xxxxxxxxxxxx-run-X-attempt-1
 
 ---
 
-## 47. Verificar nueva Task Definition
+## 46. Verificar nueva Task Definition
 
 Ejecutar:
 
@@ -2246,7 +2246,7 @@ lab04-docusaurus
 
 ---
 
-## 48. Verificar ECS Service
+## 47. Verificar ECS Service
 
 Ejecutar:
 
@@ -2272,7 +2272,7 @@ ACTIVE
 
 ---
 
-## 49. Verificar Task
+## 48. Verificar Task
 
 Obtener:
 
@@ -2301,7 +2301,7 @@ aws ecs describe-tasks \
 
 ---
 
-## 50. Trazabilidad completa
+## 49. Trazabilidad completa
 
 Después de M6 podemos establecer:
 
@@ -2335,7 +2335,7 @@ mediante evidencia verificable.
 
 ---
 
-## 51. Ejercicio real — modificar documentación
+## 50. Ejercicio real — modificar documentación
 
 Realizar ahora un cambio pequeño en Docusaurus.
 
@@ -2371,7 +2371,7 @@ git push origin development
 
 ---
 
-## 52. Qué debería suceder
+## 51. Qué debería suceder
 
 Sin ejecutar comandos AWS manualmente:
 
@@ -2411,7 +2411,7 @@ Updated Docusaurus
 
 ---
 
-## 53. Ver CloudWatch después del deployment
+## 52. Ver CloudWatch después del deployment
 
 M5 continúa siendo útil.
 
@@ -2437,7 +2437,7 @@ M6 Automated Deployment
 
 ---
 
-## 54. GitHub Step Summary
+## 53. GitHub Step Summary
 
 El workflow genera automáticamente un resumen:
 
@@ -2461,7 +2461,7 @@ Esto constituye evidencia útil para nuestro laboratorio.
 
 ---
 
-## 55. Checkpoint 2 — Primer deployment automatizado
+## 54. Checkpoint 2 — Primer deployment automatizado
 
 ```text
 [ ] validate job PASS
@@ -2490,418 +2490,7 @@ Checkpoint 2: PASS
 
 ---
 
-## 56. Troubleshooting — OIDC `Not authorized`
-
-Uno de los errores más importantes puede ser:
-
-```text
-Not authorized to perform sts:AssumeRoleWithWebIdentity
-```
-
-Esto normalmente indica un problema en:
-
-```text
-Trust Policy
-```
-
-y no necesariamente en la permission policy.
-
-Verificar:
-
-```bash
-aws iam get-role \
-  --profile aws-lab \
-  --role-name "${GITHUB_ACTIONS_ROLE_NAME}" \
-  --query 'Role.AssumeRolePolicyDocument'
-```
-
-Revisar especialmente:
-
-```text
-aud
-sub
-```
-
----
-
-## 57. Troubleshooting — `sub` mismatch
-
-Si GitHub genera:
-
-```text
-repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:development
-```
-
-pero AWS espera:
-
-```text
-repo:OWNER/REPO:environment:development
-```
-
-la comparación falla.
-
-Conceptualmente:
-
-```text
-Token sub
-     ≠
-Trust Policy sub
-```
-
-Resultado:
-
-```text
-AssumeRoleWithWebIdentity denied
-```
-
-La solución es alinear exactamente ambos valores.
-
----
-
-## 58. Troubleshooting — Environment faltante
-
-Si nuestra trust policy espera:
-
-```text
-:environment:development
-```
-
-pero el job no contiene:
-
-```yaml
-environment:
-  name: development
-```
-
-el OIDC subject puede ser diferente.
-
-Por tanto estas dos configuraciones están relacionadas:
-
-```text
-GitHub Workflow Environment
-           │
-           ▼
-OIDC sub claim
-           │
-           ▼
-AWS Trust Policy
-```
-
----
-
-## 59. Troubleshooting — `id-token: write`
-
-Si olvidamos:
-
-```yaml
-id-token: write
-```
-
-la Action no podrá obtener el OIDC token.
-
-Verificar:
-
-```yaml
-deploy:
-
-  permissions:
-    contents: read
-    id-token: write
-```
-
----
-
-## 60. Troubleshooting — `iam:PassRole`
-
-Un error como:
-
-```text
-is not authorized to perform iam:PassRole
-```
-
-puede ocurrir al registrar la Task Definition.
-
-Revisar:
-
-```text
-GitHub Actions Role
-     │
-     ▼
-iam:PassRole
-     │
-     ▼
-ecsTaskExecutionRole
-```
-
-Consultar policy:
-
-```bash
-aws iam get-role-policy \
-  --profile aws-lab \
-  --role-name "${GITHUB_ACTIONS_ROLE_NAME}" \
-  --policy-name Lab04GitHubActionsDeployPolicy
-```
-
----
-
-## 61. Troubleshooting — ECR push AccessDenied
-
-Si Docker falla durante:
-
-```text
-push
-```
-
-verificar:
-
-```text
-ecr:GetAuthorizationToken
-ecr:BatchCheckLayerAvailability
-ecr:InitiateLayerUpload
-ecr:UploadLayerPart
-ecr:CompleteLayerUpload
-ecr:PutImage
-```
-
-También comprobar que:
-
-```text
-ECR_REPOSITORY
-```
-
-coincida con:
-
-```text
-lab04-docusaurus
-```
-
----
-
-## 62. Troubleshooting — ImageTagAlreadyExistsException
-
-Si ECR responde con:
-
-```text
-ImageTagAlreadyExistsException
-```
-
-recordar que el repository está configurado como:
-
-```text
-IMMUTABLE
-```
-
-Nunca reutilizar un tag existente.
-
-Nuestro formato:
-
-```text
-SHA + RUN_NUMBER + RUN_ATTEMPT
-```
-
-debe evitar este problema.
-
----
-
-## 63. Troubleshooting — Task Definition container not found
-
-La Action:
-
-```text
-amazon-ecs-render-task-definition
-```
-
-busca:
-
-```yaml
-container-name: lab04-docusaurus
-```
-
-Esto debe coincidir exactamente con:
-
-```json
-"name": "lab04-docusaurus"
-```
-
-dentro de:
-
-```text
-task-definition.json
-```
-
-Si no coincide, el render fallará.
-
----
-
-## 64. Troubleshooting — Service no alcanza estabilidad
-
-Si:
-
-```text
-wait-for-service-stability
-```
-
-falla, revisar primero:
-
-```bash
-aws ecs describe-services \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --services "${ECS_SERVICE}" \
-  --region "${AWS_REGION}" \
-  --query 'services[0].events[0:15].[createdAt,message]' \
-  --output table
-```
-
-Después revisar Tasks detenidas:
-
-```bash
-aws ecs list-tasks \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --service-name "${ECS_SERVICE}" \
-  --desired-status STOPPED \
-  --region "${AWS_REGION}"
-```
-
-Esto conecta directamente con M5.
-
----
-
-## 65. Troubleshooting — CannotPullContainerError
-
-Consultar:
-
-```bash
-aws ecs describe-tasks \
-  --profile aws-lab \
-  --cluster "${ECS_CLUSTER}" \
-  --tasks "<FAILED_TASK_ARN>" \
-  --region "${AWS_REGION}" \
-  --query 'tasks[0].[stopCode,stoppedReason,containers[0].reason]' \
-  --output table
-```
-
-Revisar:
-
-```text
-ECR image exists?
-Execution Role?
-Networking?
-Image architecture?
-```
-
----
-
-## 66. Troubleshooting — HTTP smoke test timeout
-
-Puede ocurrir que todo el deployment ECS sea correcto pero:
-
-```text
-curl
-```
-
-desde GitHub falle.
-
-Revisar:
-
-```text
-Security Group
-```
-
-En M4 permitimos de forma didáctica:
-
-```text
-TCP 80
-0.0.0.0/0
-```
-
-Si modificamos el Security Group para aceptar únicamente nuestra IP personal:
-
-```text
-MY_IP/32
-```
-
-el GitHub-hosted runner probablemente no podrá acceder.
-
-En ese caso:
-
-```text
-ECS deployment = PASS
-External smoke test = FAIL
-```
-
-El problema pertenece al nivel:
-
-```text
-network access
-```
-
-no necesariamente al deployment.
-
----
-
-## 67. Nota de seguridad sobre el smoke test
-
-Permitir:
-
-```text
-0.0.0.0/0 → TCP 80
-```
-
-es aceptable únicamente para este laboratorio temporal.
-
-No representa la arquitectura recomendada para producción.
-
-Más adelante una arquitectura real utilizaría típicamente:
-
-```text
-Internet
-   │
-   ▼
-Application Load Balancer
-   │
-   ▼
-Private ECS Tasks
-```
-
-con Security Groups entre:
-
-```text
-ALB
- ↓
-ECS
-```
-
----
-
-## 68. Troubleshooting — Digest mismatch
-
-Si:
-
-```text
-ECR digest
-   ≠
-Running Task digest
-```
-
-no debemos considerar exitoso el deployment.
-
-Posibles causas:
-
-```text
-old Task still running
-wrong ECS Service
-wrong Task selected
-deployment not stable
-wrong image rendered
-```
-
-Nuestro pipeline falla explícitamente en esta situación.
-
----
-
-## 69. ¿Por qué verificar digest?
+## 55. ¿Por qué verificar digest?
 
 Un tag dice:
 
@@ -2939,7 +2528,7 @@ Running ECS Digest
 
 ---
 
-## 70. Pipeline como máquina de estados
+## 56. Pipeline como máquina de estados
 
 Podemos modelar el pipeline:
 
@@ -2979,7 +2568,7 @@ Pipeline = FAIL
 
 ---
 
-## 71. Relación con PDCA
+## 57. Relación con PDCA
 
 M6 también puede interpretarse mediante nuestro ciclo:
 
@@ -3007,7 +2596,7 @@ La automatización ejecuta repetidamente parte del ciclo.
 
 ---
 
-## 72. Separación CI y CD
+## 58. Separación CI y CD
 
 El workflow mantiene una división conceptual:
 
@@ -3038,7 +2627,7 @@ avance directamente al deployment.
 
 ---
 
-## 73. Evidencia del milestone
+## 59. Evidencia del milestone
 
 Registrar:
 
@@ -3100,7 +2689,7 @@ Resolution:
 
 ---
 
-## 74. Checklist final
+## 60. Checklist final
 
 ```text
 M6 — GitHub Actions + AWS OIDC + ECS
@@ -3184,7 +2773,7 @@ M6 STATUS: PASS
 
 ---
 
-## 75. Qué logramos realmente
+## 61. Qué logramos realmente
 
 Antes de M6:
 
@@ -3226,7 +2815,7 @@ repeatable automation
 
 ---
 
-## 76. Resultado arquitectónico acumulado
+## 62. Resultado arquitectónico acumulado
 
 Después de M1–M6 tenemos:
 
@@ -3271,7 +2860,7 @@ Amazon ECR      Amazon ECS
 
 ---
 
-## 77. Qué eliminamos del proceso
+## 63. Qué eliminamos del proceso
 
 Ya no necesitamos hacer manualmente:
 
@@ -3295,7 +2884,7 @@ AWS access keys in GitHub
 
 ---
 
-## 78. Qué todavía permanece manual
+## 64. Qué todavía permanece manual
 
 Todavía tenemos algunos elementos deliberadamente manuales:
 
@@ -3333,7 +2922,7 @@ CI/CD
 
 ---
 
-## 79. Pausar después de M6
+## 65. Pausar después de M6
 
 Si deseamos detener Fargate:
 
@@ -3368,7 +2957,7 @@ Esperamos:
 
 ---
 
-## 80. Importante al volver a hacer push
+## 66. Importante al volver a hacer push
 
 Nuestro workflow contiene:
 
@@ -3409,7 +2998,7 @@ Esto debe ser considerado cuando queramos controlar costos.
 
 ---
 
-## 81. Preparación para M7
+## 67. Preparación para M7
 
 M6 automatizó el happy path:
 
@@ -3464,5 +3053,418 @@ M6 STATUS: PASS
 ```
 
 
+
+## Troubleshooting
+
+### Troubleshooting — OIDC `Not authorized`
+
+Uno de los errores más importantes puede ser:
+
+```text
+Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+Esto normalmente indica un problema en:
+
+```text
+Trust Policy
+```
+
+y no necesariamente en la permission policy.
+
+Verificar:
+
+```bash
+aws iam get-role \
+  --profile aws-lab \
+  --role-name "${GITHUB_ACTIONS_ROLE_NAME}" \
+  --query 'Role.AssumeRolePolicyDocument'
+```
+
+Revisar especialmente:
+
+```text
+aud
+sub
+```
+
+---
+
+### Troubleshooting — `sub` mismatch
+
+Si GitHub genera:
+
+```text
+repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:development
+```
+
+pero AWS espera:
+
+```text
+repo:OWNER/REPO:environment:development
+```
+
+la comparación falla.
+
+Conceptualmente:
+
+```text
+Token sub
+     ≠
+Trust Policy sub
+```
+
+Resultado:
+
+```text
+AssumeRoleWithWebIdentity denied
+```
+
+La solución es alinear exactamente ambos valores.
+
+---
+
+### Troubleshooting — Environment faltante
+
+Si nuestra trust policy espera:
+
+```text
+:environment:development
+```
+
+pero el job no contiene:
+
+```yaml
+environment:
+  name: development
+```
+
+el OIDC subject puede ser diferente.
+
+Por tanto estas dos configuraciones están relacionadas:
+
+```text
+GitHub Workflow Environment
+           │
+           ▼
+OIDC sub claim
+           │
+           ▼
+AWS Trust Policy
+```
+
+---
+
+### Troubleshooting — `id-token: write`
+
+Si olvidamos:
+
+```yaml
+id-token: write
+```
+
+la Action no podrá obtener el OIDC token.
+
+Verificar:
+
+```yaml
+deploy:
+
+  permissions:
+    contents: read
+    id-token: write
+```
+
+---
+
+### Troubleshooting — `iam:PassRole`
+
+Un error como:
+
+```text
+is not authorized to perform iam:PassRole
+```
+
+puede ocurrir al registrar la Task Definition.
+
+Revisar:
+
+```text
+GitHub Actions Role
+     │
+     ▼
+iam:PassRole
+     │
+     ▼
+ecsTaskExecutionRole
+```
+
+Consultar policy:
+
+```bash
+aws iam get-role-policy \
+  --profile aws-lab \
+  --role-name "${GITHUB_ACTIONS_ROLE_NAME}" \
+  --policy-name Lab04GitHubActionsDeployPolicy
+```
+
+---
+
+### Troubleshooting — ECR push AccessDenied
+
+Si Docker falla durante:
+
+```text
+push
+```
+
+verificar:
+
+```text
+ecr:GetAuthorizationToken
+ecr:BatchCheckLayerAvailability
+ecr:InitiateLayerUpload
+ecr:UploadLayerPart
+ecr:CompleteLayerUpload
+ecr:PutImage
+```
+
+También comprobar que:
+
+```text
+ECR_REPOSITORY
+```
+
+coincida con:
+
+```text
+lab04-docusaurus
+```
+
+---
+
+### Troubleshooting — ImageTagAlreadyExistsException
+
+Si ECR responde con:
+
+```text
+ImageTagAlreadyExistsException
+```
+
+recordar que el repository está configurado como:
+
+```text
+IMMUTABLE
+```
+
+Nunca reutilizar un tag existente.
+
+Nuestro formato:
+
+```text
+SHA + RUN_NUMBER + RUN_ATTEMPT
+```
+
+debe evitar este problema.
+
+---
+
+### Troubleshooting — Task Definition container not found
+
+La Action:
+
+```text
+amazon-ecs-render-task-definition
+```
+
+busca:
+
+```yaml
+container-name: lab04-docusaurus
+```
+
+Esto debe coincidir exactamente con:
+
+```json
+"name": "lab04-docusaurus"
+```
+
+dentro de:
+
+```text
+task-definition.json
+```
+
+Si no coincide, el render fallará.
+
+---
+
+### Troubleshooting — Service no alcanza estabilidad
+
+Si:
+
+```text
+wait-for-service-stability
+```
+
+falla, revisar primero:
+
+```bash
+aws ecs describe-services \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --services "${ECS_SERVICE}" \
+  --region "${AWS_REGION}" \
+  --query 'services[0].events[0:15].[createdAt,message]' \
+  --output table
+```
+
+Después revisar Tasks detenidas:
+
+```bash
+aws ecs list-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --service-name "${ECS_SERVICE}" \
+  --desired-status STOPPED \
+  --region "${AWS_REGION}"
+```
+
+Esto conecta directamente con M5.
+
+---
+
+### Troubleshooting — CannotPullContainerError
+
+Consultar:
+
+```bash
+aws ecs describe-tasks \
+  --profile aws-lab \
+  --cluster "${ECS_CLUSTER}" \
+  --tasks "<FAILED_TASK_ARN>" \
+  --region "${AWS_REGION}" \
+  --query 'tasks[0].[stopCode,stoppedReason,containers[0].reason]' \
+  --output table
+```
+
+Revisar:
+
+```text
+ECR image exists?
+Execution Role?
+Networking?
+Image architecture?
+```
+
+---
+
+### Troubleshooting — HTTP smoke test timeout
+
+Puede ocurrir que todo el deployment ECS sea correcto pero:
+
+```text
+curl
+```
+
+desde GitHub falle.
+
+Revisar:
+
+```text
+Security Group
+```
+
+En M4 permitimos de forma didáctica:
+
+```text
+TCP 80
+0.0.0.0/0
+```
+
+Si modificamos el Security Group para aceptar únicamente nuestra IP personal:
+
+```text
+MY_IP/32
+```
+
+el GitHub-hosted runner probablemente no podrá acceder.
+
+En ese caso:
+
+```text
+ECS deployment = PASS
+External smoke test = FAIL
+```
+
+El problema pertenece al nivel:
+
+```text
+network access
+```
+
+no necesariamente al deployment.
+
+---
+
+### Nota de seguridad sobre el smoke test
+
+Permitir:
+
+```text
+0.0.0.0/0 → TCP 80
+```
+
+es aceptable únicamente para este laboratorio temporal.
+
+No representa la arquitectura recomendada para producción.
+
+Más adelante una arquitectura real utilizaría típicamente:
+
+```text
+Internet
+   │
+   ▼
+Application Load Balancer
+   │
+   ▼
+Private ECS Tasks
+```
+
+con Security Groups entre:
+
+```text
+ALB
+ ↓
+ECS
+```
+
+---
+
+### Troubleshooting — Digest mismatch
+
+Si:
+
+```text
+ECR digest
+   ≠
+Running Task digest
+```
+
+no debemos considerar exitoso el deployment.
+
+Posibles causas:
+
+```text
+old Task still running
+wrong ECS Service
+wrong Task selected
+deployment not stable
+wrong image rendered
+```
+
+Nuestro pipeline falla explícitamente en esta situación.
+
+---
 
 # Notes
